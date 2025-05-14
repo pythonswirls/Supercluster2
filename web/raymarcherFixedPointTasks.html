@@ -39,7 +39,7 @@ class Scene
 	}
 }
 
-const WORKER_COUNT = 8;
+const WORKER_COUNT = navigator.hardwareConcurrency; //160; 
 const workers = [];
 
 ////renderer stuff
