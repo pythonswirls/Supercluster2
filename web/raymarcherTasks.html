@@ -85,14 +85,15 @@ class Scheduler
 	static addTask(task, prio = 0)
 	{
 		if(prio)
-			this.tasks.unshift(task);
-		else
 			this.tasks.push(task);
+        else
+        	this.tasks.unshift(task);
 	}
+
 	static execute()
 	{
 		if(!this.tasks.length) return false;
-		this.tasks.shift().execute();
+		this.tasks.pop().execute();
 		return true;
 	}
 }
