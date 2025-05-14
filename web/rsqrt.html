@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Inverse Square Root: Newton Method</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    canvas { max-width: 900px;  max-height: 800px; margin-top: 20px; }
+  </style>
+</head>
+<body>
+
+  <h2>Inverse Square Root appproximation vs Actual in fixed 16:16</h2>
+  <p>Plotting over <code>x = 0.01</code> to <code>x = 1000</code> on a logarithmic x-axis</p>
+  <canvas id="chart" width="900" height="400"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+	function __lzcnt(a)
+	{
+		if(a < 0) return 0;
+		let i = 0;
+		while(a)
+		{
+			a >>= 1;
+			i++;
+		}
+		return 32 - i;
+	}
+
+	function fix(a)
+	{
+		return Math.round(a * 65536);
+	}
+
+	function unfix(a)
+	{
+		return a / 65536;
+	}
+
+	function fix2binFloat(a)
+	{
+		let i = __lzcnt(a & 0x7fffffff);
+		let sign = a & 0x80000000;
+		let exp = (15 - i) + 127;
+		let mantissa = ((a << i) >> 8) & 0x7fffff;
+		return sign | (exp << 23) | mantissa;
+	}
+
+	function binFloat2fix(a)
+	{
+		if(!a) return 0;
+		let sign = a & 0x80000000;
+		let exp = ((a >> 23) & 0xff) - 127;
+		let mantissa = 0x800000 | (a & 0x7fffff);
+		return sign | ((mantissa << 7) >> (14 - exp));
+	}
+
+	function mulf(a, b)
+	{
+		return Number((BigInt(a) * BigInt(b)) >> 16n);
+	}
+
+	function b_rsqrt(number)
+	{
+		let i;
+		let x2;
+		let y;
+		const threehalfs = fix(1.5);
+
+		x2 = number >> 1;
+		y  = fix2binFloat(number);
+		i  = y;				                        // evil floating point bit level hacking
+		i  = 0x5f3759df - (i >> 1);               	// what the fuck?
+		y  = binFloat2fix(i);
+		
+		y  = mulf(y, threehalfs - (mulf(x2, mulf(y, y))));   // 1st iteration
+		y  = mulf(y, threehalfs - (mulf(x2, mulf(y, y))));   // 2nd iteration, this can be removed
+
+		return y;
+	}
+
+    function rsqrt(x, iterations = 2) 
+	{
+		let i = 0;
+		while(x < 1)
+		{
+			i += 2; 
+			x = x * 4;
+		}
+		while(x >= 4)
+		{
+			i -= 2; 
+			x = x / 4;
+		}
+		let y = rsqrttab[Math.floor((x - 1) / 3 * TAB_SIZE)]; // initial guess
+		for (let i = 0; i < iterations; i++) {
+			y = y * (1.5 - 0.5 * x * y * y);
+		}
+
+		if(i < 0)
+			y = y / (1 << ((-i) >> 1));
+		else
+			y = y * (1 << (i >> 1));
+		return y;
+    }
+
+    function rsqrti(x) 
+	{
+		if(x < 0) return 0;
+		let i = (__lzcnt(x) - 14) & 0xfffffffe;
+		if(i > 0)
+			x = x << i;
+		else
+			x = x >> -i;
+		const lutf = fix(1 / 3 * TAB_SIZE);
+		let y = fix(rsqrttab[mulf(x - fix(1), lutf) >> 16]); // initial guess
+		
+		const threehalfs = fix(1.5);
+		let x2 = x >> 1;
+		y  = mulf(y, threehalfs - (mulf(x2, mulf(y, y))));
+		y  = mulf(y, threehalfs - (mulf(x2, mulf(y, y))));
+				
+		if(i < 0)
+			y = y >> (-i >> 1);
+		else
+			y = y << (i >> 1);
+		return y;
+    }	
+
+	function mulf2(a, b)
+	{
+		return Number((BigInt(a) * BigInt(b)) >> 30n);
+	}
+
+	function rsqrti2(x) 
+	{
+		if(x < 0) return 0;
+		let i = (__lzcnt(x) - 14) & 0xfffffffe;
+		if(i > 0)
+			x = x << i;
+		else
+			x = x >> -i;
+
+		const lutf = fix(1 / 3 * TAB_SIZE);
+		let y = fix(rsqrttab[mulf(x - fix(1), lutf) >> 16] * (1 << 14)); // initial guess
+		
+		let x2 = x << (14 - 1);
+		const threehalfs = fix(1.5 * (1 << 14));
+		y  = mulf2(y, threehalfs - (mulf2(x2, mulf2(y, y))));
+		y  = mulf2(y, threehalfs - (mulf2(x2, mulf2(y, y))));	
+		i -= 28;
+		if(i < 0)
+			y = y >> (-i >> 1);
+		else
+			y = y << (i >> 1);
+		return y;
+    }	
+
+	function float2Bin(f)
+	{
+		var buffer = new ArrayBuffer(4);
+		var intView = new Uint32Array(buffer);
+		var floatView = new Float32Array(buffer);
+		floatView[0] = f;
+		return intView[0];
+	}
+
+    const xs = [];
+    const approx = [];
+    const actual = [];
+    const error = [];
+	const rsqrttab = [];
+	const TAB_SIZE = 16;
+
+
+	let f = 0b1100101010011;
+	console.log(0x80000000.toString(2));
+	console.log(fix2binFloat(fix(f)).toString(2));
+	console.log(float2Bin(f).toString(2));
+	console.log(unfix(binFloat2fix(fix2binFloat(fix(0.123)))));
+	console.log(binFloat2fix(float2Bin(f)).toString(2));
+	console.log(unfix(binFloat2fix(float2Bin(f))));
+	console.log(f);
+	
+	for(let i = 0; i < TAB_SIZE; i++)
+	{
+		rsqrttab.push(1 / Math.sqrt(1 + 3 * i / TAB_SIZE));
+	}
+
+    for (let exp = -3; exp <= 4; exp += 0.05) {
+      const x = Math.pow(10, exp);  // log-spaced x values
+      const a = 1 / Math.sqrt(x);
+      //const n = rsqrt(x);
+      const n = unfix(b_rsqrt(fix(x)));
+      //const n = unfix(rsqrti2(fix(x)));
+      xs.push(x);
+      approx.push(n);
+      actual.push(a);
+      error.push(Math.abs(n - a) / a);
+    }
+
+    const ctx = document.getElementById('chart').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: xs,
+        datasets: [
+          {
+            label: 'Approximation (Newton)',
+            data: approx,
+            borderColor: 'blue',
+            fill: false,
+            pointRadius: 0,
+            tension: 0.1
+          },
+          {
+            label: 'Actual (1/√x)',
+            data: actual,
+            borderColor: 'green',
+            fill: false,
+            borderDash: [5, 5],
+            pointRadius: 0,
+            tension: 0.1
+          },
+          {
+            label: 'Relative Error',
+            data: error,
+            borderColor: 'red',
+            fill: false,
+            pointRadius: 0,
+            tension: 0.1,
+            yAxisID: 'y-error'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: {
+            type: 'logarithmic',
+            title: { display: true, text: 'x (log scale)' },
+            min: 0.001,
+            max: 100000,
+            ticks: {
+              callback: val => val
+            }
+          },
+          y: {
+            title: { display: true, text: 'Value' },
+            type: 'linear',
+            position: 'left'
+          },
+          'y-error': {
+            title: { display: true, text: 'Error' },
+			//min: 0,
+			//max: 0.01,
+            type: 'linear',
+            position: 'right',
+            grid: { drawOnChartArea: false }
+          }
+        },
+        plugins: {
+          legend: { position: 'top' },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        interaction: {
+          mode: 'index',
+          intersect: false
+        }
+      }
+    });
+  </script>
+
+</body>
+</html>

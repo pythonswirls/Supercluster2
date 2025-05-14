@@ -50,68 +50,236 @@ function getLight(eyeDir, normal, position, lightPos, baseColor, mat) {
 		add(lightColor.scale(spec * mat.specular));
 }
 
-function isInShadow(p, lightPos) {
-    let dir = lightPos.sub(p).normalize();
-    let distToLight = lightPos.sub(p).length();
-    let shadowP = p.add(dir.scale(0.2));
-    for (let i = 0; i < 50; i++) {
-        let c = sdf(shadowP);
-		if(c)
-		{
-			if (c.d < 0.01) return true;
-			shadowP = shadowP.add(dir.scale(c.d));
-			if (shadowP.sub(p).length > distToLight) break;
-		}
-	}
-    return false;
-}
-
-function getReflection(origin, dir, depth) {
-    let t = 0;
-    for (let i = 0; i < 64; i++) {
-        let p = origin.add(dir.scale(t));
-        let coll = sdf(p);
-		if(!coll) return vec(0, 0, 0);
-        if (coll.d < 0.02) {
-            coll.n = getNormal(coll);
-            let color = coll.obj.mat.shade(coll.p, coll.n);
-            let lightPos = new Vec3(0, 40, -20);
-            let inShadow = isInShadow(p, lightPos);
-            //let shaded = color;
-			let shaded = getLight(dir, coll.n, coll.p, lightPos, color, coll.obj.mat);
-            if (inShadow) shaded = color.scale(coll.obj.mat.ambient);
-            if (depth > 0 && coll.obj.mat.reflection > 0.0) 
-			{
-                let refl = getReflection(p.add(coll.n.scale(0.1)), dir.reflect(coll.n), depth - 1);
-                shaded = shaded.mix(coll.obj.mat.reflection, refl);
-            }
-            return shaded;
-        }
-        t += coll.d;
-        if (t > 200) break;
-    }
-    return vec(0, 0, 0);
-}
-
-function render() {
+function renderTasks() {
     const w = canvas.width;
     const h = canvas.height;
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) 
+	{
+        for (let x = 0; x < w; x++) 
+		{
 			let u = -(x - w / 2) / w * 1.6 * (w / h);
 			let v = -(y - h / 2) / h * 1.6;
-            let ro = new Vec3(3, 10, -50);                  // rotated position
+            let ro = new Vec3(3, 10, -50);
             let rd = (new Vec3(-u, v, 1)).normalize();
-            let color = getReflection(ro, rd, 2);
-			color = color.scale(255).clamp(0, 255);
-            let i = (y * w + x) * 4;
-            data[i + 0] = color.v[0];
-            data[i + 1] = color.v[1];
-            data[i + 2] = color.v[2];
-            data[i + 3] = 255;
+			Scheduler.addTask(new RenderTaskViewport(x, y, ro, rd));			
         }
     }
-    ctx.putImageData(imageData, 0, 0);
+	runScheduler();
+}
+
+function runScheduler()
+{
+	for(let i = 0; i < 1024; i++)
+	{
+		if(!Scheduler.execute()) break;
+	}
+	ctx.putImageData(imageData, 0, 0);	
+	if(Scheduler.tasks.length)
+		window.setTimeout(runScheduler, 0);
+}
+
+class Scheduler
+{
+	static tasks = [];
+	static currentTask = 0;
+	static addTask(task, prio = 0)
+	{
+		if(prio)
+			this.tasks.unshift(task);
+		else
+			this.tasks.push(task);
+	}
+	static execute()
+	{
+		if(!this.tasks.length) return false;
+		this.tasks.shift().execute();
+		return true;
+	}
+}
+
+class RenderTask
+{
+	constructor(parent)
+	{
+		this.parent = parent;
+	}
+
+	/*execute()
+	{
+	}*/
+}
+
+class RenderTaskViewport extends RenderTask
+{
+	constructor(x, y, pos, dir)
+	{
+		super(null);
+		this.x = x;
+		this.y = y;
+		this.pos = pos;
+		this.dir = dir;
+	}
+
+	execute()
+	{
+		const MAX_DEPTH = 4;
+		Scheduler.addTask(new RenderTaskColor(this, this.pos, this.dir, MAX_DEPTH), 1);
+	}
+
+	returnColor(color)
+	{
+		const w = canvas.width;
+		color = color.scale(255).clamp(0, 255);
+		let i = (this.y * w + this.x) * 4;
+		data[i + 0] = color.v[0];
+		data[i + 1] = color.v[1];
+		data[i + 2] = color.v[2];
+		data[i + 3] = 255;
+	}
+}
+
+class RenderTaskColor extends RenderTask
+{
+	constructor(parent, pos, dir, depth)
+	{
+		super(parent);
+		this.pos = pos;
+		this.dir = dir;
+		this.depth = depth;
+		this.waitingForCollision = true;
+		this.waitingForShadow = false;
+		this.waitingForReflection = false;
+		this.coll = null;
+		this.distToLight = 0;
+		this.shaded = true;
+	}
+
+	execute()
+	{
+		const MAX_DISTANCE = 200;
+		const MAX_STEPS = 64;
+		Scheduler.addTask(new RenderTaskCollision(this, this.pos, this.dir, MAX_DISTANCE, MAX_STEPS), 1);
+	}
+
+	returnCollision(coll, t)
+	{
+		/*if(coll)
+		{
+			this.parent.returnColor(coll.obj.mat.color);
+			return;
+		}*/
+
+		let lightPos = new Vec3(0, 40, -20);
+		if(this.waitingForCollision)
+		{
+			this.waitingForCollision = false;
+			const MAX_SHADOW_STEPS = 64;
+			if(!coll)
+			{
+				this.parent.returnColor(new Vec3(0, 0, 0));
+				return;
+			}
+			coll.n = getNormal(coll);
+			this.coll = coll;
+
+			let lightDir = lightPos.sub(coll.p).normalize();
+			this.distToLight = lightPos.sub(coll.p).length();
+
+			this.waitingForShadow = true;
+			Scheduler.addTask(new RenderTaskShadow(this, coll.p.add(lightDir.scale(0.2)), lightDir, this.distToLight + 0.1, MAX_SHADOW_STEPS), 1);
+		}
+		else if(this.waitingForShadow)
+		{
+			this.waitingForShadow = false;
+			let color = this.coll.obj.mat.shade(this.coll.p, this.coll.n);
+			let inShadow = false;
+			if(coll !== null && (coll.d < 0.01))
+				inShadow = true;
+			if (inShadow) 
+				this.shaded = color.scale(this.coll.obj.mat.ambient);
+			else
+				this.shaded = getLight(this.dir, this.coll.n, this.coll.p, lightPos, color, this.coll.obj.mat);
+
+			if (this.depth > 0 && this.coll.obj.mat.reflection > 0.0)
+			{
+				this.waitingForReflection = true;
+				Scheduler.addTask(new RenderTaskColor(this, this.coll.p.add(this.coll.n.scale(0.1)), this.dir.reflect(this.coll.n), this.depth - 1), 1);
+			}
+			else
+				this.parent.returnColor(this.shaded);
+		}
+		
+	}
+
+	returnColor(color)
+	{
+		if(this.waitingForReflection)
+		{
+			this.waitingForReflection = false;
+			this.shaded = this.shaded.mix(this.coll.obj.mat.reflection, color);
+			this.parent.returnColor(this.shaded);
+		}
+	}
+}
+
+class RenderTaskCollision extends RenderTask
+{
+	constructor(parent, pos, dir, maxDistance, maxSteps)
+	{
+		super(parent);
+		this.pos = pos;
+		this.dir = dir;
+		this.maxDistance = maxDistance;
+		this.maxSteps = maxSteps;
+	}
+
+	execute()
+	{
+		let t = 0;
+    	for (let i = 0; i < this.maxSteps; i++) 
+		{
+        	let p = this.pos.add(this.dir.scale(t));
+        	let coll = sdf(p);
+			if(!coll) break;
+			if (coll.d < 0.02) 
+			{
+				this.parent.returnCollision(coll, t);
+				return;
+			}
+			//t += this.dir.scale(coll.d);
+			t += coll.d;
+			if (t > this.maxDistance) break;
+		}
+		this.parent.returnCollision(null, 0);
+	}
+}
+
+class RenderTaskShadow extends RenderTask
+{
+	constructor(parent, pos, dir, maxDistance, maxSteps)
+	{
+		super(parent);
+		this.pos = pos;
+		this.dir = dir;
+		this.maxDistance = maxDistance;
+		this.maxSteps = maxSteps;
+	}
+
+	execute()
+	{
+		let coll = null;
+		let t = 0;
+		let shadowP = this.pos;
+    	for (let i = 0; i < this.maxSteps; i++) 
+		{
+        	coll = sdf(shadowP);
+			if(!coll) break;
+			if (coll.d < 0.01) break;
+			shadowP = shadowP.add(this.dir.scale(coll.d));
+			if (shadowP.sub(this.pos).length > this.maxDistance) break;
+		}
+		this.parent.returnCollision(coll, t);
+	}
 }
 
 let objects = [];
@@ -159,6 +327,10 @@ function vec(x, y, z)
 {
 	return new Vec3(x, y, z);
 }
+
+/*function sphere(pos, radius, mat)
+{
+}*/
 
 const FAR = 32767;
 class RenderObject
@@ -311,6 +483,7 @@ class Checker extends Material
 
 function initObjects()
 {
+	//objects.push(new Sphere(vec(0, 40, -20), 10, new Material(vec(1, 1, 1), 1, 0.1, 0.1, 0.0)));
 	objects.push(new Sphere(vec(5, 7, 10), 15, new Material(vec(1, 0.2, 0.3), 0.2, 0.8, 0.8, 0.5)));
 	objects.push(new Box(vec(25, 0, -15), vec(10, 10, 10), new Material(vec(0.4, 0.4, 1.0), 0.2, 0.8, 0.2, 0.2)));
 	objects.push(new Cylinder(vec(-30, 10, -10), vec(10, 20, 0), new Material(vec(0.3, 0.7, 0.3), 0.2, 0.8, 0.2, 0.2)));
@@ -318,8 +491,8 @@ function initObjects()
 }
 
 initObjects();
-render();
-
+//render();
+renderTasks();
 </script>
 </body>
 </html>
