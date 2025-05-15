@@ -1,7 +1,0 @@
-eclipse.preferences.version=1
-encoding//Debug/debug.c=GBK
-encoding//Startup/startup_ch32v20x_D6.S=GBK
-encoding//User/USBLIB/CONFIG/usb_pwr.c=GBK
-encoding//User/USBLIB/CONFIG/usb_pwr.h=GBK
-encoding//User/USBLIB/USB-Driver/inc/usb_type.h=GBK
-encoding//User/USBLIB/USB-Driver/src/usb_core.c=GBK
