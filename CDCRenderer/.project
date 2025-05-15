@@ -35,10 +35,4 @@
 			</matcher>
 		</filter>
 	</filteredResources>
-	<variableList>
-		<variable>
-			<name>copy_PARENT</name>
-			<value>$%7BPARENT-3-PROJECT_LOC%7D/code/ch32v20x/EVT/EXAM</value>
-		</variable>
-	</variableList>
 </projectDescription>

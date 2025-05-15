@@ -6,11 +6,9 @@
  * Description        : CH32V20x Device Peripheral Access Layer System Source File.
  *                      For HSE = 32Mhz (CH32V208x/CH32V203RBT6)
  *                      For HSE = 8Mhz (other CH32V203x)
-*********************************************************************************
-* Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
-* Attention: This software (modified or not) and binary are used for 
-* microcontroller manufactured by Nanjing Qinheng Microelectronics.
-*******************************************************************************/
+ * Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
+ * SPDX-License-Identifier: Apache-2.0
+ *********************************************************************************/
 #include "ch32v20x.h" 
 
 /* 
@@ -111,10 +109,10 @@ static void SetSysClockTo144_HSI( void );
 void SystemInit (void)
 {
   RCC->CTLR |= (uint32_t)0x00000001;
-  RCC->CFGR0 &= (uint32_t)0xF0FF0000;
+  RCC->CFGR0 &= (uint32_t)0xF8FF0000;
   RCC->CTLR &= (uint32_t)0xFEF6FFFF;
   RCC->CTLR &= (uint32_t)0xFFFBFFFF;
-  RCC->CFGR0 &= (uint32_t)0xFF00FFFF;
+  RCC->CFGR0 &= (uint32_t)0xFF80FFFF;
   RCC->INTR = 0x009F0000;    
   SetSysClock();
 }
@@ -159,8 +157,8 @@ void SystemCoreClockUpdate (void)
       }
       else
       {
-#if defined (CH32V20x_D8W) || defined (CH32V20x_D8)
-        if(((RCC->CFGR0 & (3<<22)) == (3<<22)) && (RCC_USB5PRE_JUDGE()== SET))
+#if defined (CH32V20x_D8W)
+        if((RCC->CFGR0 & (3<<22)) == (3<<22))
         {
           SystemCoreClock = ((HSE_VALUE>>1)) * pllmull;
         }

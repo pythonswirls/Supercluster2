@@ -2,13 +2,11 @@
  * File Name          : ch32v20x_iwdg.c
  * Author             : WCH
  * Version            : V1.0.0
- * Date               : 2023/12/29
+ * Date               : 2021/06/06
  * Description        : This file provides all the IWDG firmware functions.
-*********************************************************************************
-* Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
-* Attention: This software (modified or not) and binary are used for 
-* microcontroller manufactured by Nanjing Qinheng Microelectronics.
-*******************************************************************************/
+ * Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
+ * SPDX-License-Identifier: Apache-2.0
+ *******************************************************************************/
 #include "ch32v20x_iwdg.h"
 
 /* CTLR register bit mask */
@@ -92,7 +90,6 @@ void IWDG_ReloadCounter(void)
 void IWDG_Enable(void)
 {
     IWDG->CTLR = CTLR_KEY_Enable;
-    while((RCC->RSTSCKR & 0x2)==RESET);
 }
 
 /*********************************************************************

@@ -1,32 +1,30 @@
 /********************************** (C) COPYRIGHT  *******************************
  * File Name          : core_riscv.c
  * Author             : WCH
- * Version            : V1.0.1
- * Date               : 2023/11/11
- * Description        : RISC-V V4 Core Peripheral Access Layer Source File for CH32V20x
-*********************************************************************************
-* Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
-* Attention: This software (modified or not) and binary are used for 
-* microcontroller manufactured by Nanjing Qinheng Microelectronics.
-*******************************************************************************/
+ * Version            : V1.0.0
+ * Date               : 2021/06/06
+ * Description        : RISC-V Core Peripheral Access Layer Source File
+ * Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
+ * SPDX-License-Identifier: Apache-2.0
+ *******************************************************************************/
 #include <stdint.h>
 
 /* define compiler specific symbols */
 #if defined ( __CC_ARM   )
-  #define __ASM            __asm                                      /* asm keyword for ARM Compiler          */
-  #define __INLINE         __inline                                   /* inline keyword for ARM Compiler       */
+  #define __ASM            __asm                                      /*!< asm keyword for ARM Compiler          */
+  #define __INLINE         __inline                                   /*!< inline keyword for ARM Compiler       */
 
 #elif defined ( __ICCARM__ )
-  #define __ASM           __asm                                       /* asm keyword for IAR Compiler          */
-  #define __INLINE        inline                                      /* inline keyword for IAR Compiler. Only avaiable in High optimization mode */
+  #define __ASM           __asm                                       /*!< asm keyword for IAR Compiler          */
+  #define __INLINE        inline                                      /*!< inline keyword for IAR Compiler. Only avaiable in High optimization mode! */
 
 #elif defined   (  __GNUC__  )
-  #define __ASM            __asm                                      /* asm keyword for GNU Compiler          */
-  #define __INLINE         inline                                     /* inline keyword for GNU Compiler       */
+  #define __ASM            __asm                                      /*!< asm keyword for GNU Compiler          */
+  #define __INLINE         inline                                     /*!< inline keyword for GNU Compiler       */
 
 #elif defined   (  __TASKING__  )
-  #define __ASM            __asm                                      /* asm keyword for TASKING Compiler      */
-  #define __INLINE         inline                                     /* inline keyword for TASKING Compiler   */
+  #define __ASM            __asm                                      /*!< asm keyword for TASKING Compiler      */
+  #define __INLINE         inline                                     /*!< inline keyword for TASKING Compiler   */
 
 #endif
 
@@ -89,6 +87,7 @@ void __set_MISA(uint32_t value)
 {
   __ASM volatile ("csrw misa, %0" : : "r" (value) );
 }
+
 
 /*********************************************************************
  * @fn      __get_MTVEC

@@ -2,12 +2,10 @@
  * File Name          : ch32v20x.h
  * Author             : WCH
  * Version            : V1.0.0
- * Date               : 2024/07/04
+ * Date               : 2021/06/06
  * Description        : CH32V20x Device Peripheral Access Layer Header File.
- *********************************************************************************
  * Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
- * Attention: This software (modified or not) and binary are used for 
- * microcontroller manufactured by Nanjing Qinheng Microelectronics.
+ * SPDX-License-Identifier: Apache-2.0
  *******************************************************************************/
 #ifndef __CH32V20x_H
 #define __CH32V20x_H
@@ -17,7 +15,7 @@ extern "C" {
 #endif
 
 #if !defined(CH32V20x_D8W) && !defined(CH32V20x_D8) && !defined(CH32V20x_D6)
-#define CH32V20x_D6              /* CH32V203F6-CH32V203F8-CH32V203G6-CH32V203G8-CH32V203K8-CH32V203C6-CH32V203C8-CH32V203G8*/
+#define CH32V20x_D6              /* CH32V203F6-CH32V203F8-CH32V203G6-CH32V203G8-CH32V203K6-CH32V203K8-CH32V203C6-CH32V203C8 */
 //#define CH32V20x_D8              /* CH32V203RBT6 */
 //#define CH32V20x_D8W             /* CH32V208 */
 
@@ -26,25 +24,16 @@ extern "C" {
 #define __MPU_PRESENT             0                   /* Other CH32 devices does not provide an MPU */
 #define __Vendor_SysTickConfig    0                   /* Set to 1 if different SysTick Config is used */
 
-#ifndef HSE_VALUE
-    #if defined(CH32V20x_D8) || defined(CH32V20x_D8W)
-    #define HSE_VALUE    ((uint32_t)32000000) /* Value of the External oscillator in Hz */
-    #else
-    #define HSE_VALUE    ((uint32_t)8000000) /* Value of the External oscillator in Hz */
-    #endif
+#if defined(CH32V20x_D8) || defined(CH32V20x_D8W)
+  #define HSE_VALUE    ((uint32_t)32000000) /* Value of the External oscillator in Hz */
+#else
+  #define HSE_VALUE    ((uint32_t)8000000) /* Value of the External oscillator in Hz */
 #endif
 
 /* In the following line adjust the External High Speed oscillator (HSE) Startup Timeout value */
 #define HSE_STARTUP_TIMEOUT    ((uint16_t)0x1000) /* Time out for HSE start up */
 
 #define HSI_VALUE              ((uint32_t)8000000) /* Value of the Internal oscillator in Hz */
-
-/* CH32V20x Standard Peripheral Library version number */
-#define __CH32V20x_STDPERIPH_VERSION_MAIN   (0x02) /* [15:8] main version */
-#define __CH32V20x_STDPERIPH_VERSION_SUB    (0x02) /* [7:0] sub version */
-#define __CH32V20x_STDPERIPH_VERSION        ( (__CH32V20x_STDPERIPH_VERSION_MAIN << 8)\
-                                             |(__CH32V20x_STDPERIPH_VERSION_SUB << 0))
-
 
 /* Interrupt Number Definition, according to the selected device */
 typedef enum IRQn
@@ -55,7 +44,7 @@ typedef enum IRQn
     Ecall_M_Mode_IRQn = 5,   /* 5 Ecall M Mode Interrupt                             */
     Ecall_U_Mode_IRQn = 8,   /* 8 Ecall U Mode Interrupt                             */
     Break_Point_IRQn = 9,    /* 9 Break Point Interrupt                              */
-    SysTick_IRQn = 12,       /* 12 System timer Interrupt                            */
+    SysTicK_IRQn = 12,       /* 12 System timer Interrupt                            */
     Software_IRQn = 14,      /* 14 software Interrupt                                */
 
     /******  RISC-V specific Interrupt Numbers *********************************************************/
@@ -102,8 +91,8 @@ typedef enum IRQn
     EXTI15_10_IRQn = 56,       /* External Line[15:10] Interrupts                      */
     RTCAlarm_IRQn = 57,        /* RTC Alarm through EXTI Line Interrupt                */
     USBWakeUp_IRQn = 58,       /* USB Device WakeUp from suspend through EXTI Line Interrupt 	*/
-    USBFS_IRQn = 59,           /* USBFS global Interrupt                               */
-    USBFSWakeUp_IRQn = 60,     /* USB Host/Device WakeUp Interrupt                     */
+    USBHD_IRQn = 59,           /* USBHD global Interrupt                               */
+    USBHDWakeUp_IRQn = 60,     /* USB Host/Device WakeUp Interrupt                     */
 
 #ifdef CH32V20x_D6
     UART4_IRQn = 61,         /* UART4 global Interrupt                               */
@@ -132,18 +121,8 @@ typedef enum IRQn
 
 } IRQn_Type;
 
-#define HardFault_IRQn          EXC_IRQn
-#define ADC1_2_IRQn             ADC_IRQn
-#define SysTicK_IRQn            SysTick_IRQn
-#define USBHD_IRQn              USBFS_IRQn
-#define USBHDWakeUp_IRQn        USBFSWakeUp_IRQn
-
-#define USBHD_IRQHandler        USBFS_IRQHandler    
-#define USBHDWakeUp_IRQHandler  USBFSWakeUp_IRQHandler  
-
-#define USBOTG_FS               USBFSD
-#define USBOTG_H_FS             USBFSH
-
+#define HardFault_IRQn    EXC_IRQn
+#define ADC1_2_IRQn       ADC_IRQn
 
 #include <stdint.h>
 #include "core_riscv.h"
@@ -542,64 +521,22 @@ typedef struct
     uint16_t      RESERVED7;
     __IO uint16_t CCER;
     uint16_t      RESERVED8;
-    union
-    {
-        __IO uint32_t CNT_R32;
-        struct
-        {
-            __IO uint16_t CNT;
-            uint16_t      RESERVED9;
-        };
-    };
+    __IO uint16_t CNT;
+    uint16_t      RESERVED9;
     __IO uint16_t PSC;
     uint16_t      RESERVED10;
-    union
-    {
-        __IO uint32_t ATRLR_R32;
-        struct
-        {
-            __IO uint16_t ATRLR;
-            uint16_t      RESERVED11;
-        };
-    };
+    __IO uint16_t ATRLR;
+    uint16_t      RESERVED11;
     __IO uint16_t RPTCR;
     uint16_t      RESERVED12;
-    union
-    {
-        __IO uint32_t CH1CVR_R32;
-        struct
-        {
-            __IO uint16_t CH1CVR;
-            uint16_t      RESERVED13;
-        };
-    };
-    union
-    {
-        __IO uint32_t CH2CVR_R32;
-        struct
-        {
-            __IO uint16_t CH2CVR;
-            uint16_t      RESERVED14;
-        };
-    };
-    union
-    {
-        __IO uint32_t CH3CVR_R32;
-        struct
-        {
-            __IO uint16_t CH3CVR;
-            uint16_t      RESERVED15;
-        };
-    };
-    union
-    {
-        __IO uint32_t CH4CVR_R32;
-        struct
-        {
-            __IO uint16_t CH4CVR;
-            uint16_t      RESERVED16;
-        };
-    };
+    __IO uint16_t CH1CVR;
+    uint16_t      RESERVED13;
+    __IO uint16_t CH2CVR;
+    uint16_t      RESERVED14;
+    __IO uint16_t CH3CVR;
+    uint16_t      RESERVED15;
+    __IO uint16_t CH4CVR;
+    uint16_t      RESERVED16;
     __IO uint16_t BDTR;
     uint16_t      RESERVED17;
     __IO uint16_t DMACFGR;
@@ -698,7 +635,7 @@ typedef struct
     __IO uint32_t Reserve1;
     __IO uint32_t OTG_CR;
     __IO uint32_t OTG_SR;
-} USBFSD_TypeDef;
+} USBOTG_FS_TypeDef;
 
 typedef struct
 {
@@ -740,7 +677,7 @@ typedef struct
     __IO uint32_t  Reserve19;
     __IO uint32_t  OTG_CR;
     __IO uint32_t  OTG_SR;
-} USBFSH_TypeDef;
+} USBOTG_FS_HOST_TypeDef;
 
 #if defined(CH32V20x_D8) || defined(CH32V20x_D8W)
 /* ETH10M Registers */
@@ -921,8 +858,8 @@ typedef struct
 #define RCC                                     ((RCC_TypeDef *)RCC_BASE)
 #define FLASH                                   ((FLASH_TypeDef *)FLASH_R_BASE)
 #define CRC                                     ((CRC_TypeDef *)CRC_BASE)
-#define USBFSD                                  ((USBFSD_TypeDef *)USBFS_BASE)
-#define USBFSH                                  ((USBFSH_TypeDef *)USBFS_BASE)
+#define USBOTG_FS                               ((USBOTG_FS_TypeDef *)USBFS_BASE)
+#define USBOTG_H_FS                             ((USBOTG_FS_HOST_TypeDef *)USBFS_BASE)
 #define EXTEN                                   ((EXTEN_TypeDef *)EXTEN_BASE)
 #define OPA                                     ((OPA_TypeDef *)OPA_BASE)
 #define ETH10M                                  ((ETH10M_TypeDef *)ETH10M_BASE)
@@ -3170,6 +3107,7 @@ typedef struct
 #define FLASH_CTLR_PAGE_PG                      ((uint32_t)0x00010000) /* Page Programming 256Byte */
 #define FLASH_CTLR_PAGE_ER                      ((uint32_t)0x00020000) /* Page Erase 256Byte */
 #define FLASH_CTLR_PAGE_BER32                   ((uint32_t)0x00040000) /* Block Erase 32K */
+#define FLASH_CTLR_PAGE_BER64                   ((uint32_t)0x00080000) /* Block Erase 64K */
 #define FLASH_CTLR_PG_STRT                      ((uint32_t)0x00200000) /* Page Programming Start */
 
 /*******************  Bit definition for FLASH_ADDR register  *******************/
@@ -3854,23 +3792,14 @@ typedef struct
 #define PWR_CTLR_PLS_1                          ((uint16_t)0x0040) /* Bit 1 */
 #define PWR_CTLR_PLS_2                          ((uint16_t)0x0080) /* Bit 2 */
 
-#define  PWR_CTLR_PLS_MODE0                    ((uint16_t)0x0000)     
-#define  PWR_CTLR_PLS_MODE1                    ((uint16_t)0x0020)     
-#define  PWR_CTLR_PLS_MODE2                    ((uint16_t)0x0040)     
-#define  PWR_CTLR_PLS_MODE3                    ((uint16_t)0x0060)     
-#define  PWR_CTLR_PLS_MODE4                    ((uint16_t)0x0080)     
-#define  PWR_CTLR_PLS_MODE5                    ((uint16_t)0x00A0)     
-#define  PWR_CTLR_PLS_MODE6                    ((uint16_t)0x00C0)     
-#define  PWR_CTLR_PLS_MODE7                    ((uint16_t)0x00E0)     
-
-#define PWR_CTLR_PLS_2V2                        PWR_CTLR_PLS_MODE0
-#define PWR_CTLR_PLS_2V3                        PWR_CTLR_PLS_MODE1
-#define PWR_CTLR_PLS_2V4                        PWR_CTLR_PLS_MODE2
-#define PWR_CTLR_PLS_2V5                        PWR_CTLR_PLS_MODE3
-#define PWR_CTLR_PLS_2V6                        PWR_CTLR_PLS_MODE4
-#define PWR_CTLR_PLS_2V7                        PWR_CTLR_PLS_MODE5
-#define PWR_CTLR_PLS_2V8                        PWR_CTLR_PLS_MODE6
-#define PWR_CTLR_PLS_2V9                        PWR_CTLR_PLS_MODE7
+#define PWR_CTLR_PLS_2V2                        ((uint16_t)0x0000) /* PVD level 2.2V */
+#define PWR_CTLR_PLS_2V3                        ((uint16_t)0x0020) /* PVD level 2.3V */
+#define PWR_CTLR_PLS_2V4                        ((uint16_t)0x0040) /* PVD level 2.4V */
+#define PWR_CTLR_PLS_2V5                        ((uint16_t)0x0060) /* PVD level 2.5V */
+#define PWR_CTLR_PLS_2V6                        ((uint16_t)0x0080) /* PVD level 2.6V */
+#define PWR_CTLR_PLS_2V7                        ((uint16_t)0x00A0) /* PVD level 2.7V */
+#define PWR_CTLR_PLS_2V8                        ((uint16_t)0x00C0) /* PVD level 2.8V */
+#define PWR_CTLR_PLS_2V9                        ((uint16_t)0x00E0) /* PVD level 2.9V */
 
 #define PWR_CTLR_DBP                            ((uint16_t)0x0100) /* Disable Backup Domain write protection */
 
@@ -4066,8 +3995,7 @@ typedef struct
 #define RCC_SRAMEN                              ((uint16_t)0x0004) /* SRAM interface clock enable */
 #define RCC_FLITFEN                             ((uint16_t)0x0010) /* FLITF clock enable */
 #define RCC_CRCEN                               ((uint16_t)0x0040) /* CRC clock enable */
-#define RCC_USBFS                               ((uint16_t)0x1000)
-#define RCC_USBHD                               RCC_USBFS
+#define RCC_USBHD                               ((uint16_t)0x1000)
 
 /******************  Bit definition for RCC_APB2PCENR register  *****************/
 #define RCC_AFIOEN                              ((uint32_t)0x00000001) /* Alternate Function I/O clock enable */
