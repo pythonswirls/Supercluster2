@@ -22,34 +22,8 @@
 		<nature>org.eclipse.cdt.core.cnature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.managedBuildNature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
+		<nature>org.eclipse.cdt.core.ccnature</nature>
 	</natures>
-	<linkedResources>
-		<link>
-			<name>Core</name>
-			<type>2</type>
-			<locationURI>copy_PARENT/SRC/Core</locationURI>
-		</link>
-		<link>
-			<name>Debug</name>
-			<type>2</type>
-			<locationURI>copy_PARENT/SRC/Debug</locationURI>
-		</link>
-		<link>
-			<name>Ld</name>
-			<type>2</type>
-			<locationURI>copy_PARENT/SRC/Ld</locationURI>
-		</link>
-		<link>
-			<name>Peripheral</name>
-			<type>2</type>
-			<locationURI>copy_PARENT/SRC/Peripheral</locationURI>
-		</link>
-		<link>
-			<name>Startup</name>
-			<type>2</type>
-			<locationURI>copy_PARENT/SRC/Startup</locationURI>
-		</link>
-	</linkedResources>
 	<filteredResources>
 		<filter>
 			<id>1595986042669</id>
