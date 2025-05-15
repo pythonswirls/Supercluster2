@@ -54,3 +54,11 @@ CDCRenderer/obj/User/main.o
 CDCRenderer/obj/User/subdir.mk
 CDCRenderer/obj/User/system_ch32v20x.d
 CDCRenderer/obj/User/system_ch32v20x.o
+CDCRenderer/obj/CDCRenderer.elf
+CDCRenderer/obj/CDCRenderer.hex
+CDCRenderer/obj/CDCRenderer.lst
+CDCRenderer/obj/CDCRenderer.map
+CDCRenderer/obj/Core/core_riscv.d
+CDCRenderer/obj/Core/core_riscv.o
+CDCRenderer/obj/Startup/startup_ch32v20x_D6.d
+CDCRenderer/obj/Startup/startup_ch32v20x_D6.o
