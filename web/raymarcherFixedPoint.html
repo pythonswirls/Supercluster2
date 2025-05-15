@@ -200,11 +200,7 @@ function b_rsqrt(number)
 
 function rsqrti(a)
 {
-	let r = fix(1/Math.sqrt(unfix(a)));
-	let r2 = b_rsqrt(a);
-//	if(Math.abs(r - r2) > 32768)
-//		console.log(unfix(a) + " " + unfix(r) + " " + unfix(r2));
-	return fix(1/Math.sqrt(unfix(a)));// b_rsqrt(a);
+	return b_rsqrt(a);
 }
 
 function sqrti(a)
