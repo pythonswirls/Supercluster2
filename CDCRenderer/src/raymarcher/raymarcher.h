@@ -1,18 +1,7 @@
 #pragma once
 #include "FixedPoint.h"
 #include "Scene.h"
-/*
-onmessage = function (e)
-{
-    const color = getReflection(fthisscene, veci(...e.data.origin.v), veci(...e.data.dir.v), e.data.depth);
-    postMessage(
-        {
-            color: color,
-            x: e.data.x,
-            y: e.data.y
-        });
-};
-*/
+
 const fixed E = fixed(0.01f * 65536);
 const fixed E2 = fixed(0.02f * 65536);
 const fixed FAR = fixed(100 * 65536);

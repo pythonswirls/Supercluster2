@@ -2,12 +2,140 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>CPU Fixed Point Raymarcher</title>
+  <title>MCU Raymarcher</title>
   <style>canvas {display: block; }</style>
 </head>
 <body>
-<canvas id="canvas" width="320" height="180"></canvas>
+	<button id="connect">Connect Serial</button>
+	<button id="send">Render</button>
+	<canvas id="canvas" width="320" height="180"></canvas>
+
 <script>
+
+///////////////////////////// WebSerial //////////////////////////////
+const TARGET_VENDOR_ID = 0x1A86; // Replace with your device's USB Vendor ID (e.g., Arduino = 0x2341)
+const TARGET_PRODUCT_ID = 0xFFFF; // Optional: use if you want to filter by USB Product ID
+
+let port;
+let writer;
+let reader;
+
+document.getElementById("connect").addEventListener("click", async () => {
+try {
+	port = await navigator.serial.requestPort({
+	filters: [{ usbVendorId: TARGET_VENDOR_ID, usbProductId:TARGET_PRODUCT_ID }]
+	});
+	await connectToPort(port);
+} catch (err) {
+	console.error("Manual connection failed:", err);
+}
+});
+
+document.getElementById("send").addEventListener("click", async () => {
+	if (!port || !port.writable) {
+		console.warn("Serial port not connected.");
+		return;
+	}
+	start();
+});
+
+async function connectToPort(serialPort) {
+	await serialPort.open({ baudRate: 115200 });
+	console.log("Serial port opened.");
+
+	// Setup reader
+	reader = serialPort.readable.getReader();
+	readLoop();
+
+	port = serialPort;
+}
+
+let receiveBuffer = new Uint8Array(0); // growable buffer
+
+async function readLoop() 
+{
+	try {
+		while (true) {
+		const { value, done } = await reader.read();
+		if (done) break;
+		if (value) bufferIncomingData(value);
+		}
+	} catch (error) {
+		console.error("Read error:", error);
+	} finally {
+		reader.releaseLock();
+	}
+}
+
+function bufferIncomingData(newData) {
+	// Concatenate existing buffer with new incoming data
+	const combined = new Uint8Array(receiveBuffer.length + newData.length);
+	combined.set(receiveBuffer);
+	combined.set(newData, receiveBuffer.length);
+	receiveBuffer = combined;
+
+	const PACKET_SIZE = 12;
+
+	while (receiveBuffer.length >= PACKET_SIZE) {
+		// Extract a full message
+		const packet = receiveBuffer.slice(0, PACKET_SIZE);
+		receiveData(packet);
+
+		// Remove processed bytes from buffer
+		receiveBuffer = receiveBuffer.slice(PACKET_SIZE);
+	}
+}	
+
+function receiveData(data) {
+	const view = new DataView(data.buffer);
+	//const myByte = view.getUint8(0);
+	const myDword = view.getUint32(0, true);
+	const pixel = workers[0];
+	pixel.color = veci(view.getUint32(0, true), view.getUint32(4, true), view.getUint32(8, true));
+	workerDone(pixel);
+}
+
+let lockCount = 0;
+async function sendData(pixel)
+{
+	//12 + 12
+	const buffer = new ArrayBuffer(25);
+	const view = new DataView(buffer);
+	view.setUint8(0, 0x69);
+	view.setUint32(1, pixel.origin.v[0], true); // little-endian
+	view.setUint32(5, pixel.origin.v[1], true);
+	view.setUint32(9, pixel.origin.v[2], true);
+	view.setUint32(13, pixel.dir.v[0], true);
+	view.setUint32(17, pixel.dir.v[1], true);
+	view.setUint32(21, pixel.dir.v[2], true);
+	setTimeout(() =>
+	{
+		lockCount++;
+		const writer = port.writable.getWriter();
+		writer.write(buffer);
+		writer.releaseLock();
+		lockCount--;
+	}, 0);
+}
+
+window.addEventListener("DOMContentLoaded", async () => {
+	const ports = await navigator.serial.getPorts();
+
+	const matchingPorts = ports.filter(p => {
+		const info = p.getInfo();
+		return info.usbVendorId === TARGET_VENDOR_ID &&
+			(!TARGET_PRODUCT_ID || info.usbProductId === TARGET_PRODUCT_ID);
+	});
+
+	if (matchingPorts.length === 1) {
+		console.log("Auto-connecting to authorized device...");
+		await connectToPort(matchingPorts[0]);
+	} else {
+		console.log("Manual connection required.");
+	}
+});
+
+//////////////////////////// RENDERER ////////////////////////////////
 
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
@@ -17,6 +145,11 @@ const data = imageData.data;
 const E = fix(0.01);
 const E2 = fix(0.02);
 const FAR = fix(100);
+
+function start()
+{
+	render(new Scene());
+}
 
 class Scene
 {
@@ -34,120 +167,83 @@ class Scene
 	}
 }
 
-function sdf(scene, p) 
+////renderer stuff
+
+let xres = 0;
+let yres = 0;
+let renderx = 0;
+let rendery = 0;
+let rendererScene = null;
+
+function nextPixel()
 {
-	let minD = fix(FAR);
-	let minDobj = null;
-	for(let i = 0; i < scene.objects.length; i++)
+	if(rendery == yres) return;
+	let u = -(renderx - xres / 2) / xres * 1.6 * (xres / yres);
+	let v = -(rendery - yres / 2) / yres * 1.6;
+	let ro = rendererScene.cameraPos;
+	let rd = vec(-u, v, 1).normalize();
+
+	renderx++;
+	if(renderx == xres) 
 	{
-		let d = scene.objects[i].sdf(p);
-		if(d < minD)
-		{
-			minD = d;
-			minDobj = scene.objects[i];
-		}
+		renderx = 0;
+		rendery++;
+		ctx.putImageData(imageData, 0, 0);
 	}
-	if(minDobj)
-		return new Collision(minD, p, veci(0, 0, 0), minDobj);
-	return null;
-}
 
-function getNormal(coll) {
-	const dx = subi(coll.obj.sdf(coll.p.add(veci(E, 0, 0))), coll.obj.sdf(coll.p.sub(veci(E, 0, 0))));
-	const dy = subi(coll.obj.sdf(coll.p.add(veci(0, E, 0))), coll.obj.sdf(coll.p.sub(veci(0, E, 0))));
-	const dz = subi(coll.obj.sdf(coll.p.add(veci(0, 0, E))), coll.obj.sdf(coll.p.sub(veci(0, 0, E))));
-    return veci(dx, dy, dz).normalize();
-}
-
-function getLight(eyeDir, normal, position, lightPos, baseColor, mat) {
-    let lightDir = lightPos.sub(position).normalize();
-    let diff = Math.max(normal.dot(lightDir), 0);
-    let halfVec = lightDir.sub(eyeDir).normalize();
-    let spec = powi16(Math.max(halfVec.dot(normal), 0));
-    let lightColor = vec(1, 1, 1);
-    return baseColor.scale(mat.ambient).
-		add(baseColor.scale(muli(diff, mat.diffuse))).
-		add(lightColor.scale(muli(spec, mat.specular)));
-}
-
-function isInShadow(scene, p, lightPos) {
-	let rl = p.sub(lightPos);
-    let dir = rl.normalize();
-    let dist = rl.length();
-	let t = 0;
-    for (let i = 0; i < 50; i++) {
-        let np = lightPos.add(dir.scale(t));
-		let c = sdf(scene, np);
-		if(!c) return false;
-		if (c.d < E) 
-		{
-			return (t < subi(dist, E2+E2+E));
-		}
-		t = addi(t, c.d);
+	const pixel = {
+		scene: rendererScene,
+		origin: ro,
+		dir: rd,
+		x: renderx,
+		y: rendery,
+		depth: 2
 	}
-    return false;
+
+	return pixel;
 }
 
-function getReflection(scene, origin, dir, depth) {
-    let t = 0;
-    for (let i = 0; i < 64; i++) {
-        let p = origin.add(dir.scale(t));
-        let coll = sdf(scene, p);
-		if(!coll) return veci(0, 0, 0);//vec(0.8, 0.8, 1);
-		//console.log(coll.d / 65536);
-        if (coll.d < E2) {
-			//return coll.obj.mat.color;
-            coll.n = getNormal(coll);
-            let color = coll.obj.mat.shade(coll.p, coll.n);
-            let inShadow = isInShadow(scene, p, scene.lightPos);
-            //let shaded = color;
-			let shaded = getLight(dir, coll.n, coll.p, scene.lightPos, color, coll.obj.mat);
-            if (inShadow) shaded = color.scale(coll.obj.mat.ambient);
-            if (depth > 0 && coll.obj.mat.reflection > fix(0.0)) 
-			{
-                let refl = getReflection(scene, p.add(coll.n.scale(fix(0.1))), dir.reflect(coll.n), depth - 1);
-                shaded = shaded.mix(coll.obj.mat.reflection, refl);
-            }
-            return shaded.mix(muli(t, scene.fog), scene.skyMat.color);
-        }
-        t += coll.d;
-        if (t > FAR) break;
-    }
-    return scene.skyMat.shade(origin, dir);
-}
+const WORKER_COUNT = 1; //160; 
+const workers = [];
+
+async function workerDone(pixel)
+{
+	let color = pixel.color;
+	color = color.scale(fix(255))
+	color = color.clamp(0, fix(255));
+	let i = (pixel.y * xres + pixel.x) * 4;
+	data[i + 0] = color.v[0] >> 16;
+	data[i + 1] = color.v[1] >> 16;
+	data[i + 2] = color.v[2] >> 16;
+	data[i + 3] = 255;
+	const id = pixel.id;
+	//do next pixel
+	pixel = nextPixel();
+	if(pixel) 
+	{
+		pixel.id = id;
+		workers[id] = pixel;
+		await sendData(pixel);
+	}
+
+}		
 
 function render(scene) {
-    const w = canvas.width;
-    const h = canvas.height;
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-			let u = -(x - w / 2) / w * 1.6 * (w / h);
-			let v = -(y - h / 2) / h * 1.6;
-            let ro = scene.cameraPos;                  // rotated position
-            let rd = vec(-u, v, 1).normalize();
-            let color = getReflection(scene, ro, rd, 2);
-			color = color.scale(fix(255))
-			color = color.clamp(0, fix(255));
-            let i = (y * w + x) * 4;
-            data[i + 0] = color.v[0] >> 16;
-            data[i + 1] = color.v[1] >> 16;
-            data[i + 2] = color.v[2] >> 16;
-            data[i + 3] = 255;
-        }
-    }
-    ctx.putImageData(imageData, 0, 0);
-}
-
-function __lzcnt2(a)
-{
-	if(a < 0) return 0;
-	let i = 0;
-	while(a)
+	rendererScene = scene;
+    xres = canvas.width;
+    yres = canvas.height;
+	renderx = 0;
+	rendery = 0;
+	for(let i = 0; i < WORKER_COUNT; i++)
 	{
-		a >>= 1;
-		i++;
+		pixel = nextPixel();
+		if(pixel) 
+		{
+			pixel.id = i;
+			workers.push(pixel);
+			sendData(pixel);
+		}
 	}
-	return 32 - i;
 }
 
 function __lzcnt(a)
@@ -202,6 +298,7 @@ function rsqrti(a)
 {
 	return b_rsqrt(a);
 }
+
 
 function sqrti(a)
 {
@@ -475,8 +572,6 @@ class Sky extends Material
 		return this.color.add(this.color2.sub(this.color).scale(n.v[1]));
 	}
 }
-
-render(new Scene());
 
 </script>
 </body>
