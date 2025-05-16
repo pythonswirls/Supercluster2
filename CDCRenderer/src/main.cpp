@@ -1,5 +1,6 @@
 #include "usb/usb_serial.h"
 #include"systemFix.h"
+#include "raymarcher/raymarcher.h"
 
 USBSerial Serial;
 
@@ -8,6 +9,7 @@ void setup()
 	SetSysClockTo144_HSIfix();
 	SystemCoreClockUpdate();
 	Serial.begin(115200);
+	loadScene(0);
 }
 
 
