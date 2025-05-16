@@ -1,6 +1,7 @@
 #include "usb/usb_serial.h"
 #include"systemFix.h"
 #include "raymarcher/raymarcher.h"
+#include <debug.h>
 
 USBSerial Serial;
 
@@ -10,14 +11,18 @@ void setup()
 	SystemCoreClockUpdate();
 	Serial.begin(115200);
 	loadScene(0);
+	Delay_Init();
 }
-
 
 void loop()
 {
-
-	Serial.println("Hello World!");
-	//delay(1000);
+	static int i = 0;
+	Serial.write((uint8_t*)&i, 4);
+	i++;
+	Serial.flush();
+	Delay_Ms(100);
+	//Serial.println("Hello World!");
+	//delay(10);
 }
 
 int main()

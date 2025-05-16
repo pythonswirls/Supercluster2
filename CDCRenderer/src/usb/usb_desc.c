@@ -22,7 +22,7 @@ const uint8_t USBD_DeviceDescriptor[] = {
     0x00,                  // bDeviceProtocol
     DEF_USBD_UEP0_SIZE,    // bMaxPacketSize0
     0x86, 0x1A,            // idVendor
-    0x0C, 0xFE,            // idProduct
+    0xFF, 0xFF,            // idProduct
     0x00, 0x01,            // bcdDevice
     0x01,                  // iManufacturer
     0x02,                  // iProduct

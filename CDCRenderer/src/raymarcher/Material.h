@@ -56,7 +56,7 @@ class Sky: public Material
 public:
     Vec3 color2;
     Sky(const Vec3 &color1, const Vec3 &color2)
-        :Material(color1, ambient, diffuse, specular, reflection),
+        :Material(color1, 0, 0, 0, 0),
          color2(color2)
     {
     }

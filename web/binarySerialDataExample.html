@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Serial Device Auto Connect</title>
+</head>
+<body>
+  <button id="connect">Connect Serial</button>
+  <button id="send">Send Binary Object</button>
+
+  <script>
+    const TARGET_VENDOR_ID = 0x1A86; // Replace with your device's USB Vendor ID (e.g., Arduino = 0x2341)
+    const TARGET_PRODUCT_ID = 0xFFFF; // Optional: use if you want to filter by USB Product ID
+
+    let port;
+    let writer;
+    let reader;
+
+    document.getElementById("connect").addEventListener("click", async () => {
+      try {
+        port = await navigator.serial.requestPort({
+          filters: [{ usbVendorId: TARGET_VENDOR_ID, usbProductId:TARGET_PRODUCT_ID }]
+        });
+        await connectToPort(port);
+      } catch (err) {
+        console.error("Manual connection failed:", err);
+      }
+    });
+
+    document.getElementById("send").addEventListener("click", async () => {
+      if (!port || !port.writable) {
+        console.warn("Serial port not connected.");
+        return;
+      }
+
+      const obj = {
+        myByte: 0x42,
+        myDword: 0x12345678
+      };
+
+      const buffer = new ArrayBuffer(5);
+      const view = new DataView(buffer);
+      view.setUint8(0, obj.myByte);
+      view.setUint32(1, obj.myDword, true); // little-endian
+
+      const writer = port.writable.getWriter();
+      await writer.write(buffer);
+      writer.releaseLock();
+
+      console.log("Sent:", obj);
+    });
+
+    async function connectToPort(serialPort) {
+      await serialPort.open({ baudRate: 115200 });
+      console.log("Serial port opened.");
+
+      // Setup reader
+      reader = serialPort.readable.getReader();
+      readLoop();
+
+      port = serialPort;
+    }
+
+	let receiveBuffer = new Uint8Array(0); // growable buffer
+
+	async function readLoop() 
+	{
+		try {
+			while (true) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			if (value) bufferIncomingData(value);
+			}
+		} catch (error) {
+			console.error("Read error:", error);
+		} finally {
+			reader.releaseLock();
+		}
+	}
+
+	function bufferIncomingData(newData) {
+		// Concatenate existing buffer with new incoming data
+		const combined = new Uint8Array(receiveBuffer.length + newData.length);
+		combined.set(receiveBuffer);
+		combined.set(newData, receiveBuffer.length);
+		receiveBuffer = combined;
+
+		const PACKET_SIZE = 4;
+
+		while (receiveBuffer.length >= PACKET_SIZE) {
+			// Extract a full message
+			const packet = receiveBuffer.slice(0, PACKET_SIZE);
+			handleBinaryData(packet);
+
+			// Remove processed bytes from buffer
+			receiveBuffer = receiveBuffer.slice(PACKET_SIZE);
+		}
+	}	
+
+	function handleBinaryData(data) {
+		const view = new DataView(data.buffer);
+		//const myByte = view.getUint8(0);
+		const myDword = view.getUint32(0, true);
+
+		console.log("Received complete message:", {/* myByte,*/ myDword });
+	}
+
+	window.addEventListener("DOMContentLoaded", async () => {
+		const ports = await navigator.serial.getPorts();
+
+		const matchingPorts = ports.filter(p => {
+			const info = p.getInfo();
+			return info.usbVendorId === TARGET_VENDOR_ID &&
+				(!TARGET_PRODUCT_ID || info.usbProductId === TARGET_PRODUCT_ID);
+		});
+
+		if (matchingPorts.length === 1) {
+			console.log("Auto-connecting to authorized device...");
+			await connectToPort(matchingPorts[0]);
+		} else {
+			console.log("Manual connection required.");
+		}
+	});
+
+  </script>
+</body>
+</html>
