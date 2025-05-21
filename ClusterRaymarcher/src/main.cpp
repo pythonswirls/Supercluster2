@@ -1,4 +1,5 @@
 #include "debug.h"
+#include "SystemClockfix.h"
 
 void enableSWD()
 {
@@ -246,6 +247,8 @@ void blink(int ms = 100)
 
 int main(void)
 {
+	SetSysClockTo_48MHz_HSEfix();
+	SystemCoreClockUpdate();
     Delay_Init();
     initLED();
     blink();
