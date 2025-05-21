@@ -1,6 +1,8 @@
 #include "debug.h"
 #include "SystemClockfix.h"
 #include <ch32v00x.h>
+#include "raymarcher/raymarcher.h"
+#include "bus.h"
 
 void enableSWD()
 {
@@ -100,27 +102,6 @@ void unlockD7()
     FLASH_Lock();
 }
 
-void initBus()
-{
-    uint32_t cfg = 0;
-    for(int i = 0; i < 8; i++)
-        cfg |= (0b0100 /*open drain*/ | 0b11 /*30MHz output*/) << (4 * i);
-    GPIOC->OUTDR = 0xff;    //for open drain need to leave high for others to speak
-    GPIOC->CFGLR = cfg;
-    GPIOD->OUTDR = 0xff;
-    GPIOD->CFGLR = cfg;
-}
-
-uint8_t readBusA()
-{
-    return GPIOC->INDR;
-}
-
-uint8_t readBusB()
-{
-    return GPIOD->INDR;
-}
-
 volatile bool debugActive = true;
 
 void initLED()
@@ -156,16 +137,14 @@ void initTimerInterrupt()
 
 void FlashOptionData(uint8_t data0, uint8_t data1) //taken from ch32fun
 {
-    const uint32_t FLASH_KEY1 = 0x45670123;
-    const uint32_t FLASH_KEY2 = 0xCDEF89AB;
-#define CR_OPTPG_Set               ((uint32_t)0x00000010)
-#define CR_OPTPG_Reset             ((uint32_t)0xFFFFFFEF)
-#define CR_OPTER_Set               ((uint32_t)0x00000020)
-#define CR_OPTER_Reset             ((uint32_t)0xFFFFFFDF)
-#define CR_STRT_Set                ((uint32_t)0x00000040)
-#define CR_LOCK_Set                ((uint32_t)0x00000080)
-
-
+    constexpr uint32_t FLASH_KEY1 = 0x45670123;
+    constexpr uint32_t FLASH_KEY2 = 0xCDEF89AB;
+	constexpr uint32_t CR_OPTPG_Set = ((uint32_t)0x00000010);
+	constexpr uint32_t CR_OPTPG_Reset = ((uint32_t)0xFFFFFFEF);
+	constexpr uint32_t CR_OPTER_Set = ((uint32_t)0x00000020);
+	constexpr uint32_t CR_OPTER_Reset = ((uint32_t)0xFFFFFFDF);
+	constexpr uint32_t CR_STRT_Set = ((uint32_t)0x00000040);
+	constexpr uint32_t CR_LOCK_Set = ((uint32_t)0x00000080);
 
     volatile uint16_t hold[6];
     uint32_t *hold32p=(uint32_t *)hold;
@@ -199,7 +178,6 @@ void FlashOptionData(uint8_t data0, uint8_t data1) //taken from ch32fun
 
     return;
 }
-#include "bus.h"
 
 bool writeID()
 {
@@ -218,23 +196,15 @@ bool writeID()
     return false;
 }
 
-
-void programmingPhase()
+void setMcuIndex(uint8_t addr)
 {
-    while(1)
-    {
-        int addr = readBusA() & 0xf;
-        if(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_1))
-        {
-            led(1);
-            Delay_Ms(200);
-            led(0);
-            Delay_Ms(10);
-            FlashOptionData(addr, 0);
-            while(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_1));
-            return;
-        }
-    }
+	led(1);
+	Delay_Ms(200);
+	led(0);
+	Delay_Ms(10);
+	FlashOptionData(addr, 0);
+	//doesn't hurt, even hurts flash less
+	while(getIo0());
 }
 
 void blink(int ms = 100)
@@ -245,6 +215,89 @@ void blink(int ms = 100)
     Delay_Ms(ms >> 1);
 }
 
+bool readBusVec3(uint8_t id, Vec3 &vec)
+{
+	int32_t i;
+	if(!readBusInt32(id, i)) return false;
+	vec.v[0] = i;
+	if(!readBusInt32(id, i)) return false;
+	vec.v[1] = i;
+	if(!readBusInt32(id, i)) return false;
+	vec.v[2] = i;
+	return true;
+}
+
+bool writeBusVec3(uint8_t id, Vec3 &vec)
+{
+	if(!writeBusInt32(id, vec.v[0])) return false;
+	if(!writeBusInt32(id, vec.v[1])) return false;
+	if(!writeBusInt32(id, vec.v[2])) return false;
+	return true;
+}
+
+//globals
+Vec3 pixelColor;
+
+bool renderPixel(uint8_t id)
+{
+	Vec3 pos;
+	Vec3 dir;
+	if(readBusVec3(id, pos)) return false;
+	if(readBusVec3(id, dir)) return false;
+	int depth = 2;
+	pixelColor = renderPixel(pos, dir, depth);
+	return true;
+}
+
+bool sendRenderPixelResult(uint8_t id)
+{
+	if(!writeBusVec3(id, pixelColor)) return false;
+	return true;
+}
+
+void busLoop()
+{
+	int id = getMcuIndex();
+	while(1)
+	{
+		while(getIo1())
+		{
+			//wait for next command;
+		}
+		while(!getIo1())
+		{
+			//idle
+		}
+		//read command and address
+		int addr = readBusA();
+		int cmd = readBusB();
+		//check if talking to us OR if setting the Mcu index
+		if(cmd != BUS_SET_INDEX && addr != id && addr != 0xff) 
+			continue;
+		switch(cmd)
+		{
+			case BUS_SET_INDEX:
+				if(getIo0()) setMcuIndex(addr);
+				id = addr;
+				break;
+			case BUS_BLINK:
+				blink();
+				break;
+
+			case BUS_RAYMARCHER_INIT:
+				break;
+			case BUS_RAYMARCHER_RENDER_PIXEL:
+				renderPixel(id);
+				break;
+			case BUS_RAYMARCHER_RENDER_PIXEL_RESULT:
+				sendRenderPixelResult(id);
+				break;
+			default:
+			//nope
+				break;
+		}
+	}
+}
 
 int main(void)
 {
@@ -270,19 +323,6 @@ int main(void)
     {
         blink();
     }*/
-    while(1)
-    {
-        int addr = readBusA();
-        if(addr == readUserByte0())
-        {
-            for(int i = 0; i < 3; i++)
-            {
-                led(1);
-                Delay_Ms(50);
-                led(0);
-                Delay_Ms(50);
-            }
-        }
-        writeID();
-    }
+	loadScene();
+	busLoop();
 }
