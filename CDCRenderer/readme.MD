@@ -1,1 +1,5 @@
 CDC Code based of https://github.com/21km43/CH32V203-USBCDC
+
+Basil's Flash config should make ch382 faaaast:
+
+52FC00001C003253100700051C003253FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
