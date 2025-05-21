@@ -1,5 +1,6 @@
 #include "debug.h"
 #include "SystemClockfix.h"
+#include <ch32v00x.h>
 
 void enableSWD()
 {
