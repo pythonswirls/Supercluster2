@@ -33,8 +33,8 @@ void led(int on = -1)
     if(on)
     {
         GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-        GPIO_Init(GPIOA, &GPIO_InitStructure);
         GPIOA->BSHR = 2;
+        GPIO_Init(GPIOA, &GPIO_InitStructure);
     }
     else
     {
@@ -64,7 +64,7 @@ void __attribute__((interrupt("WCH-Interrupt-fast"))) SysTick_Handler(void)
 
 int getMcuIndex()
 {
-    return OB->Data1;//(FLASH->OBR >> 10) & 0xff;//*(uint8_t*)(OB_BASE + 4);
+    return OB->Data0 & 0xff;//(FLASH->OBR >> 10) & 0xff;//*(uint8_t*)(OB_BASE + 4);
 }
 
 void writeUserByte0(uint8_t b)
@@ -83,23 +83,14 @@ void writeUserByte1(uint8_t b)
 
 uint8_t readUserByte0()
 {
-    return OB->Data0;
+    return OB->Data0 & 0xff;
 //    return *(uint8_t*)(OB_BASE + 4);
 }
 
 uint8_t readUserByte1()
 {
-    return OB->Data1;
+    return OB->Data1 & 0xff;
 //    return *(uint8_t*)(OB_BASE + 6);
-}
-
-void unlockD7()
-{
-    //if((FLASH_GetUserOptionByte() & OB_RST_NoEN) == OB_RST_NoEN) return; //already configured
-    FLASH_Unlock();
-    FLASH_EraseOptionBytes();
-    FLASH_UserOptionByteConfig(OB_IWDG_SW, OB_STOP_NoRST, OB_STDBY_NoRST, OB_RST_NoEN);
-    FLASH_Lock();
 }
 
 volatile bool debugActive = true;
@@ -114,8 +105,68 @@ void initLED()
     GPIO_Init(GPIOA, &GPIO_InitStructure);
 }
 
+//void EXTI7_0_IRQHandler( void ) __attribute__((interrupt));//(interrupt("WCH-Interrupt-fast")));
+
+void __attribute__((interrupt("WCH-Interrupt-fast"))) EXTI7_0_IRQHandler(void)
+{
+//    if(EXTI->INTFR & EXTI_Line2)
+    {
+		if(GPIOA->INDR & 4) //rising edge
+		{
+			if(!busWriting)
+			{
+				//read new command
+				if(readBusA() == busId)
+				{
+					uint8_t data = readBusB();
+					int end = (busInBufferEnd + 1) & 31;
+					if(end == busInBufferCurrent) //buffer overflow
+						busInOverflow = true;
+					else
+					{
+						busInBuffer[busInBufferEnd] = data;
+						busInBufferEnd = end;
+					}
+				}
+			}
+			else
+			busWriting = false;
+		}
+		else
+		{
+			if(busOutBufferCurrent == busOutBufferEnd) //all data Sent
+			{
+				clearBusA();
+				clearBusB();
+			}
+			else
+			{
+				writeBusA(busId);
+				writeBusB(busOutBuffer[busOutBufferCurrent]);
+				busOutBufferCurrent = (busOutBufferCurrent + 1) & 31;
+			}
+			//interruptCount++;
+		}
+        EXTI->INTFR = EXTI_Line2;
+    }
+}
+
+void initInterrupts()
+{
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);
+
+    AFIO->EXTICR = AFIO_EXTICR1_EXTI2_PA;
+    EXTI->INTENR = EXTI_INTENR_MR2; // Enable EXT7
+    EXTI->RTENR = EXTI_RTENR_TR2;  // Rising edge trigger
+    EXTI->FTENR = EXTI_FTENR_TR2;  // Falling edge trigger	
+
+	SetVTFIRQ((uint32_t)EXTI7_0_IRQHandler, EXTI7_0_IRQn, 0, ENABLE);
+	NVIC_EnableIRQ(EXTI7_0_IRQn);
+}
+
 void initPheripherals()
 {
+	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD, ENABLE);
@@ -123,6 +174,7 @@ void initPheripherals()
 
     initLED();
     initBus();
+	initInterrupts();
 }
 
 void initTimerInterrupt()
@@ -135,7 +187,7 @@ void initTimerInterrupt()
     SetVTFIRQ((u32)SysTick_Handler, SysTicK_IRQn, 0, ENABLE);
 }
 
-void FlashOptionData(uint8_t data0, uint8_t data1) //taken from ch32fun
+void FlashOptionData(uint8_t data0, uint8_t data1) //taken from ch32fun, thx
 {
     constexpr uint32_t FLASH_KEY1 = 0x45670123;
     constexpr uint32_t FLASH_KEY2 = 0xCDEF89AB;
@@ -196,23 +248,50 @@ bool writeID()
     return false;
 }
 
-void setMcuIndex(uint8_t addr)
-{
-	led(1);
-	Delay_Ms(200);
-	led(0);
-	Delay_Ms(10);
-	FlashOptionData(addr, 0);
-	//doesn't hurt, even hurts flash less
-	while(getIo0());
-}
-
 void blink(int ms = 100)
 {
     led(1);
     Delay_Ms(ms >> 1);
     led(0);
     Delay_Ms(ms >> 1);
+}
+
+void setMcuIndex(uint8_t addr)
+{
+
+	uint8_t user = OB->USER & 0xff;
+
+	if(	FLASH_EraseOptionBytes() != FLASH_COMPLETE)
+	{
+		blink();blink();blink();
+		return;
+	}
+	if(FLASH_ProgramOptionByteData((uint32_t)&OB->USER, user) != FLASH_COMPLETE)
+	{
+		blink();blink();blink();
+		return;
+	}
+	if(FLASH_ProgramOptionByteData((uint32_t)&OB->Data0, addr) != FLASH_COMPLETE)
+	{
+		blink();blink();blink();
+		return;
+	}
+	blink(1000);
+	//FlashOptionData(addr, 0);
+	//doesn't hurt, even hurts flash less
+	while(getIo0());
+}
+
+void unlockD7()
+{
+	if((OB->USER & 0b11000) == 0b11000) return; //reset already disabled
+	blink();
+	blink();
+	blink();
+    FLASH_Unlock();
+    FLASH_EraseOptionBytes();
+    FLASH_UserOptionByteConfig(OB_IWDG_SW, OB_STDBY_NoRST, OB_RST_NoEN, OB_PowerON_Start_Mode_USER);
+    FLASH_Lock();
 }
 
 bool readBusVec3(uint8_t id, Vec3 &vec)
@@ -255,9 +334,17 @@ bool sendRenderPixelResult(uint8_t id)
 	return true;
 }
 
+bool sendPing(uint8_t id)
+{
+	for(int i = 0; i < 160; i++)
+		while(!writeBusByte(i));
+	return true;
+}
+
 void busLoop()
 {
 	int id = getMcuIndex();
+	setBusId(id);
 	while(1)
 	{
 		while(getIo1())
@@ -277,10 +364,11 @@ void busLoop()
 		switch(cmd)
 		{
 			case BUS_SET_INDEX:
-				if(getIo0()) setMcuIndex(addr);
+				setMcuIndex(addr);
 				id = addr;
+				setBusId(id);
 				break;
-			case BUS_BLINK:
+			case BUS_LED:
 				blink();
 				break;
 
@@ -292,6 +380,8 @@ void busLoop()
 			case BUS_RAYMARCHER_RENDER_PIXEL_RESULT:
 				sendRenderPixelResult(id);
 				break;
+			case BUS_PING:
+				sendPing(id);
 			default:
 			//nope
 				break;
@@ -306,23 +396,13 @@ int main(void)
     Delay_Init();
     initLED();
     blink();
-    Delay_Ms(3000);
-//  if(readUserByte1())
-//    unlockD7();
+    Delay_Ms(5000);
+	unlockD7();
     disableSWD();
 
     initPheripherals();
     blink();
-/*    if(readUserByte1() == 255)
-    {
-        blink();
-        blink();
-        programmingPhase();
-    }
-    else
-    {
-        blink();
-    }*/
+    blink();
 	loadScene();
 	busLoop();
 }

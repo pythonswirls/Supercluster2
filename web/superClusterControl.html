@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>WebSerial MCU Controller</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      background-color: #f9f9f9;
+    }
+    button, input[type="number"] {
+      margin: 5px;
+      padding: 8px 12px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background-color: #eee;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #ddd;
+    }
+    .status {
+      font-weight: bold;
+      color: green;
+      margin-left: 10px;
+    }
+    #log {
+      white-space: pre;
+      border: 1px solid #ccc;
+      background-color: white;
+      padding: 10px;
+      max-height: 200px;
+      overflow-y: scroll;
+      margin-top: 20px;
+    }
+    .control-row {
+      display: flex;
+      align-items: center;
+      margin: 10px 0;
+    }
+    .checkbox-group {
+      display: flex;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      gap: 5px;
+    }
+    .checkbox-group label {
+      display: flex;
+      align-items: center;
+      font-size: 12px;
+      margin-right: 5px;
+    }
+    #mcuGrid {
+      display: grid;
+      grid-template-columns: repeat(16, 20px);
+      gap: 4px;
+      margin-top: 10px;
+    }
+    .mcu-cell {
+      width: 20px;
+      height: 20px;
+      text-align: center;
+      line-height: 20px;
+      border-radius: 3px;
+      background-color: #ccc;
+      font-size: 10px;
+    }
+    .state-na { background-color: #eee; }
+    .state-idle { background-color: #8f8; }
+    .state-busy { background-color: #f88; }
+  </style>
+</head>
+<body>
+  <h1>MCU Control App</h1>
+
+  <button id="connectBtn">Connect</button>
+  <span id="status" class="status">Disconnected</span>
+
+  <div class="control-row">
+    <button id="setIndexBtn">Set Index</button>
+    <input type="range" id="indexSlider" min="0" max="240" step="16" value="0" style="margin-left: 10px;">
+    <span id="indexValue">0</span>
+  </div>
+
+  <div class="control-row">
+    <label for="ledIndex">LED Index:</label>
+    <input type="number" id="ledIndex" value="255" min="0" max="255">
+    <button id="ledBtn">Toggle LED</button>
+  </div>
+
+  <div class="control-row">
+    <button id="pingBtn">Ping</button>
+  </div>
+
+  <div class="control-row">
+    <label>MCU Group (16-bit):</label>
+  </div>
+  <div class="checkbox-group">
+    <script>
+      for (let i = 15; i >= 0; i--) {
+        document.write(`<label><input type='checkbox' id='bit${i}' checked> ${i}</label>`);
+      }
+    </script>
+  </div>
+
+  <h3>MCU States</h3>
+  <div id="mcuGrid"></div>
+
+  <h3>Response Log</h3>
+  <div id="log"></div>
+
+  <script>
+    const BUS_SET_INDEX = 0xf0;
+    const BUS_LED = 0xfe;
+    const BUS_PING = 0xf8;
+
+    let port = null;
+    let reader = null;
+    let writer = null;
+	
+    // Setup grid
+    const mcuGrid = document.getElementById("mcuGrid");
+    for (let i = 0; i < 160; i++) {
+      const cell = document.createElement("div");
+      cell.className = "mcu-cell state-na";
+      cell.id = `mcu-${i}`;
+      mcuGrid.appendChild(cell);
+    }
+
+	let reconnectInterval = null;
+
+	function updateStatus(connected) {
+		const statusEl = document.getElementById("status");
+		if (connected) {
+			statusEl.textContent = "Connected";
+			statusEl.style.color = "green";
+		} else {
+			statusEl.textContent = "Disconnected";
+			statusEl.style.color = "red";
+		}
+	}
+
+    async function connectSerial() {
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+
+        writer = port.writable.getWriter();
+        reader = port.readable.getReader();
+
+        document.getElementById("status").textContent = "Connected";
+        document.getElementById("status").style.color = "green";
+
+        readLoop();
+      } catch (err) {
+        console.error("Connection error:", err);
+        document.getElementById("status").textContent = "Disconnected";
+        document.getElementById("status").style.color = "red";
+      }
+    }
+
+	let responseBuffer = [];
+
+	async function readLoop() {
+		try {
+			while (true) {
+			const { value, done } = await reader.read();
+			if (done) throw new Error("Reader closed");
+			if (value) {
+				for (const byte of value) responseBuffer.push(byte);
+				processBufferedResponse();
+			}
+			}
+		} catch (err) {
+			console.error("Read error:", err);
+			handleDisconnect();
+		}
+	}
+
+
+	function processBufferedResponse() {
+	while (responseBuffer.length > 0) {
+		const expectedLength = responseBuffer[0] + 1; // count + 1 header byte
+		if (responseBuffer.length < expectedLength) return; // not enough data yet
+
+		const fullMessage = responseBuffer.splice(0, expectedLength);
+		handleResponse(new Uint8Array(fullMessage));
+	}
+	}
+
+	function handleResponse(value) {
+	const hex = [...value].map(b => b.toString(16).padStart(2, '0')).join(' ');
+	log(`RX: ${hex}`);
+
+	const count = value[0];
+	for (let i = 0; i < count && i < 160; i++) {
+		const state = value[i + 1];
+		const cell = document.getElementById(`mcu-${i}`);
+		cell.className = 'mcu-cell';
+		if (state === 0) cell.classList.add('state-na');
+		else if (state === 1) cell.classList.add('state-idle');
+		else if (state === 255) cell.classList.add('state-busy');
+		else cell.classList.add('state-na');
+	}
+	}
+
+    async function sendInstruction(instruction, data = []) {
+      if (!writer) return;
+      const payload = new Uint8Array([instruction, ...data]);
+      await writer.write(payload);
+      log(`TX: ${[...payload].map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
+    }
+
+    function log(text) {
+      const logEl = document.getElementById("log");
+      logEl.textContent += text + "\n";
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    document.getElementById("connectBtn").addEventListener("click", connectSerial);
+
+    const slider = document.getElementById("indexSlider");
+    const indexValue = document.getElementById("indexValue");
+    slider.addEventListener("input", () => {
+      indexValue.textContent = slider.value;
+    });
+
+    document.getElementById("setIndexBtn").addEventListener("click", () => {
+      const index = parseInt(slider.value);
+      sendInstruction(BUS_SET_INDEX, [index]);
+    });
+
+    document.getElementById("ledBtn").addEventListener("click", () => {
+      const ledIndex = parseInt(document.getElementById("ledIndex").value) || 0;
+      sendInstruction(BUS_LED, [ledIndex]);
+    });
+
+    document.getElementById("pingBtn").addEventListener("click", () => {
+      sendInstruction(BUS_PING);
+    });
+
+    // Optional: reconnect on reload
+    window.addEventListener('DOMContentLoaded', async () => {
+      if ('serial' in navigator) {
+        const ports = await navigator.serial.getPorts();
+        if (ports.length > 0) {
+          port = ports[0];
+          await port.open({ baudRate: 115200 });
+          writer = port.writable.getWriter();
+          reader = port.readable.getReader();
+          document.getElementById("status").textContent = "Connected";
+          document.getElementById("status").style.color = "green";
+          readLoop();
+        }
+      }
+    });
+
+	async function handleDisconnect() {
+		updateStatus(false);
+
+		try {
+			if (reader) await reader.cancel();
+			if (writer) writer.releaseLock();
+			if (port && port.readable) await port.close();
+		} catch (e) {}
+
+		reader = null;
+		writer = null;
+
+		if (!reconnectInterval) {
+			reconnectInterval = setInterval(checkReconnect, 200);
+		}
+		}
+
+		async function checkReconnect() {
+		if (!port) return;
+		try {
+			await port.open({ baudRate: 115200 });
+			writer = port.writable.getWriter();
+			reader = port.readable.getReader();
+			updateStatus(true);
+			reconnectInterval && clearInterval(reconnectInterval);
+			reconnectInterval = null;
+			readLoop();
+		} catch (err) {
+			console.log("Reconnection attempt failed...");
+		}
+	}
+
+  </script>
+</body>
+</html>
