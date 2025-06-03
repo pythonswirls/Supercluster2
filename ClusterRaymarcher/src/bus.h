@@ -6,17 +6,20 @@ enum BusInstruction
 	BUS_RAYMARCHER_RENDER_PIXEL = 0x41,
 	BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x42,
 
-    BUS_SET_INDEX = 0xf0,
-    BUS_GET_UID = 0xf1,
-    BUS_MODE_IO0 = 0xf2,
-    BUS_MODE_IO1 = 0xf3,
-    BUS_WRITE_FLASH = 0xf4,
-    BUS_JUMP_TO_FLASH = 0xf5,
-    BUS_EXECUTE = 0xf6,
-    BUS_HALT = 0xf87,
-    BUS_PING = 0xf8,
-    BUS_LED = 0xfe
+	BUS_LED = 0xe0,
+	BUS_SET_INDEX = 0xf0,
+	BUS_GET_UID = 0xf1,
+	BUS_MODE_IO0 = 0xf2,
+	BUS_MODE_IO1 = 0xf3,
+	BUS_WRITE_FLASH = 0xf4,
+	BUS_JUMP_TO_FLASH = 0xf5,
+	BUS_EXECUTE = 0xf6,
+	BUS_HALT = 0xf87,
+	BUS_PING = 0xf8,
+	BUS_READ = 0xfe
 };
+
+////////// HAL /////////////
 
 void initBus()
 {
@@ -62,14 +65,14 @@ void clearBusB()
 int getIo0()
 {
 	return (GPIOA->INDR >> 1) & 1;
-//	return GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_1) ? 1 : 0;
 }
 
 int getIo1()
 {
 	return (GPIOA->INDR >> 2) & 1;
-	//return GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_2) ? 1 : 0;
 }
+
+//////////////////////////////////////////////////
 
 bool readBusByte(uint8_t id, uint8_t &b)
 {
@@ -106,6 +109,7 @@ volatile int busInBufferEnd = 0;
 volatile int busOutBufferCurrent = 0;
 volatile int busOutBufferEnd = 0;
 volatile bool busInOverflow = false;
+volatile bool busRead = false;
 volatile uint8_t busId = 0;
 volatile uint8_t busOutBuffer[32];
 volatile uint8_t busInBuffer[32];
@@ -132,6 +136,57 @@ bool readBusByte(uint8_t &b)
 	busInBufferCurrent = (busInBufferCurrent + 1) & 31;
 	return true;
 }
+
+void __attribute__((interrupt("WCH-Interrupt-fast"))) busClockInterrupt(void)
+{
+//    if(EXTI->INTFR & EXTI_Line2)
+	{
+		EXTI->INTFR = EXTI_Line2;
+		if(GPIOA->INDR & 4) //rising edge
+		{
+			if(!busWriting)
+			{
+				//read new command
+				if(readBusA() == busId)
+				{
+					uint8_t data = readBusB();
+					if(data == BUS_READ)	//host request data
+					{
+						busRead = true;
+						return;
+					}
+					//queue other instruction/data to process
+					int end = (busInBufferEnd + 1) & 31;
+					if(end == busInBufferCurrent) //buffer overflow
+						busInOverflow = true;
+					else
+					{
+						busInBuffer[busInBufferEnd] = data;
+						busInBufferEnd = end;
+					}
+				}
+			}
+			else
+			busWriting = false;
+		}
+		else
+		{
+			if(busOutBufferCurrent == busOutBufferEnd) //all data Sent
+			{
+				clearBusA();
+				clearBusB();
+			}
+			else
+			{
+				writeBusA(busId);
+				writeBusB(busOutBuffer[busOutBufferCurrent]);
+				busOutBufferCurrent = (busOutBufferCurrent + 1) & 31;
+			}
+			//interruptCount++;
+		}
+	}
+}
+
 
 
 /*bool writeBusByte(uint8_t id, uint8_t b)

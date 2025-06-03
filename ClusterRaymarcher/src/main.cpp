@@ -105,52 +105,6 @@ void initLED()
     GPIO_Init(GPIOA, &GPIO_InitStructure);
 }
 
-//void EXTI7_0_IRQHandler( void ) __attribute__((interrupt));//(interrupt("WCH-Interrupt-fast")));
-
-void __attribute__((interrupt("WCH-Interrupt-fast"))) EXTI7_0_IRQHandler(void)
-{
-//    if(EXTI->INTFR & EXTI_Line2)
-    {
-		if(GPIOA->INDR & 4) //rising edge
-		{
-			if(!busWriting)
-			{
-				//read new command
-				if(readBusA() == busId)
-				{
-					uint8_t data = readBusB();
-					int end = (busInBufferEnd + 1) & 31;
-					if(end == busInBufferCurrent) //buffer overflow
-						busInOverflow = true;
-					else
-					{
-						busInBuffer[busInBufferEnd] = data;
-						busInBufferEnd = end;
-					}
-				}
-			}
-			else
-			busWriting = false;
-		}
-		else
-		{
-			if(busOutBufferCurrent == busOutBufferEnd) //all data Sent
-			{
-				clearBusA();
-				clearBusB();
-			}
-			else
-			{
-				writeBusA(busId);
-				writeBusB(busOutBuffer[busOutBufferCurrent]);
-				busOutBufferCurrent = (busOutBufferCurrent + 1) & 31;
-			}
-			//interruptCount++;
-		}
-        EXTI->INTFR = EXTI_Line2;
-    }
-}
-
 void initInterrupts()
 {
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);
@@ -160,7 +114,7 @@ void initInterrupts()
     EXTI->RTENR = EXTI_RTENR_TR2;  // Rising edge trigger
     EXTI->FTENR = EXTI_FTENR_TR2;  // Falling edge trigger	
 
-	SetVTFIRQ((uint32_t)EXTI7_0_IRQHandler, EXTI7_0_IRQn, 0, ENABLE);
+	SetVTFIRQ((uint32_t)busClockInterrupt, EXTI7_0_IRQn, 0, ENABLE);
 	NVIC_EnableIRQ(EXTI7_0_IRQn);
 }
 
