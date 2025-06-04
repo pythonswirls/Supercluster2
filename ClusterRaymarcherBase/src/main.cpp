@@ -6,7 +6,7 @@ constexpr bool BOARD_TYPE_BASE = false;
 #include "raymarcher/raymarcher.h"
 #include <debug.h>
 #include "gpio.h"
-#include "bus.h"
+#include "HostBusCH32V208.h"
 #include "mcu.h"
 
 
@@ -63,7 +63,8 @@ Serializer ser;
 void sendBlink(int addr)
 {
 	const uint8_t data[] = {BUS_LED};
-	sendBusPacket(addr, 1, data);
+	bus.sendPacket(addr, data, 1);
+	ser.flush();
 }
 
 int main(void)
@@ -74,6 +75,7 @@ int main(void)
 	Delay_Ms(100);
 	Serial.begin(115200);
 	initGpio();
+	bus.init();
 	Delay_Ms(6000);
 	initMCUs();
 
@@ -86,11 +88,11 @@ int main(void)
 				uint8_t baseIndex = ser.getUint8();
 				for(int i = 0; i < 16; i++)
 				{
-					setBusData(baseIndex + i, BUS_SET_INDEX);
-					setMcuIo1(1, i);
-					Delay_Ms(200);
+					//setBusData(baseIndex + i, BUS_SET_INDEX);
+					//setMcuIo1(1, i);
+					//Delay_Ms(200);
 					//sendBusPacket(baseIndex + i, BUS_SET_INDEX);
-					setMcuIo1(0, i);
+					//setMcuIo1(0, i);
 				}
 				break;
 			}
@@ -114,41 +116,3 @@ int main(void)
 		}
     }
 }
-
-////////////////////////////////////////////
-/*
-int main()
-{
-	SetSysClockTo144_HSIfix();
-	SystemCoreClockUpdate();
-	Delay_Init();
-	Delay_Ms(100);
-	Serial.begin(115200);
-	//loadScene(0);
-
-
-	while (true)
-	{
-		switch(ser.getUint8())
-		{
-			case BUS_SET_INDEX:
-			{
-
-				Vec3 pos(ser.readInt32(), ser.readInt32(), ser.readInt32());
-				Vec3 dir(ser.readInt32(), ser.readInt32(), ser.readInt32());
-
-				//Vec3 color = renderPixel(pos, dir, 2);
-
-				ser.writeInt32(color.v[0]);
-				ser.writeInt32(color.v[1]);
-				ser.writeInt32(color.v[2]);
-				ser.flush();
-				break;
-			}
-			default:
-				break;
-		}
-	}
-	return 0;
-}
-*/

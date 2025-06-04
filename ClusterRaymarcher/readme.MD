@@ -10,7 +10,6 @@ C0-7: Open drain A
 
 D0-7: Open drain B
 
-
 CMD: low
 
 packet start
@@ -25,8 +24,8 @@ B0-B7: address
 packet body lines
 
 A0: CLK
-A1-A2: 0: ERROR, 1: 3: NOT_PRESENT
-A3: 0: MORE_DATA, 1: EOF
+A1-A2: 0: ERROR, 1: OK, 2: RESERVED, 3: NOT_PRESENT
+A3: 0: MORE_DATA, 1: END OF DATA
 A4 - A7: CRC (optional)
 
 B0-B7: DATA

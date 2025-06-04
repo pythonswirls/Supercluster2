@@ -1,4 +1,6 @@
 #pragma once
+#include "debug.h"
+#include <stdint.h>
 
 enum BusInstruction
 {
@@ -19,108 +21,165 @@ enum BusInstruction
 	BUS_READ = 0xfe
 };
 
-void initBus()
+template<int bufferSize = 32>	//needs to be power of two
+class RingBuffer
 {
-    uint32_t cfg = 0;
-    for(int i = 0; i < 8; i++)
-        cfg |= (0b0100 /*open drain*/ | 0b11 /*30MHz output*/) << (4 * i);
-    GPIOC->OUTDR = 0xff;    //for open drain need to leave high for others to speak
-    GPIOC->CFGLR = cfg;
-    GPIOD->OUTDR = 0xff;
-    GPIOD->CFGLR = cfg;
-}
+	public:
+	uint8_t buffer[bufferSize];
+	uint32_t pos;
+	uint32_t size;
 
-void setMcuIo1(int state, int bank = -1)
-{
-	if(BOARD_TYPE_PROGRAMMER)
+	RingBuffer():
+		pos(0),
+		size(0)
 	{
-		if(bank != -1)
-		{
-			if(state)
-				gndBank[bank]->BSHR = 1 << gndPin[bank];
-			else
-				gndBank[bank]->BCR = 1 << gndPin[bank];
-		}
-		else
-		{
-			if(state)
-				for(int i = 0; i < 16; i++)
-					gndBank[i]->BSHR = 1 << gndPin[i];
-			else
-				for(int i = 0; i < 16; i++)
-					gndBank[i]->BCR = 1 << gndPin[i];
-		}
 	}
-}
 
-void clockDelay()
-{
-	//Delay_Us(1);
-	Delay_Ms(1);
-}
-
-void setBusData(uint8_t addr, uint8_t data)
-{
-    GPIOB->OUTDR = (((uint16_t)data) << 8) | addr;
-}
-
-void getBusData(uint8_t &addr, uint8_t &data)
-{
-	uint16_t bus = GPIOB->INDR;
-	addr = bus & 0xff;
-	data = bus >> 8;
-}
-
-
-bool readBusByte(uint8_t id, uint8_t &b, int bank)
-{
-	setMcuIo1(0, bank);
-	clockDelay();
-	setMcuIo1(1, bank);
-	uint8_t addr = 0;
-	getBusData(addr, b);
-	setMcuIo1(0, bank);
-	if(addr != id) return false;
-	return true;
-}
-
-bool readBusInt32(uint8_t id, int32_t &i, int bank)
-{
-	uint8_t b;
-	if(!readBusByte(id, b, bank)) return false;
-	i = b;
-	if(!readBusByte(id, b, bank)) return false;
-	i |= ((uint32_t)b) << 8;
-	if(!readBusByte(id, b, bank)) return false;
-	i |= ((uint32_t)b) << 16;
-	if(!readBusByte(id, b, bank)) return false;
-	i |= ((uint32_t)b) << 24;
-	return true;
-}
-
-void sendBusPacket(uint8_t addr, int size, const uint8_t *data)
-{
-	int bank = addr & 15;//addr >> 4;
-	if(addr == 255) bank = -1;
-	for(int i = 0; i < size; i++)
+	bool write(uint8_t data)
 	{
-		setBusData(addr, data[i]);
-		setMcuIo1(1, bank);
-		clockDelay();
-		setMcuIo1(0, bank);
-		clockDelay();
+		if(size + 1 >= bufferSize) return false;
+		buffer[(pos + size) & (bufferSize - 1)] = data;
+		size++;
+		return true;
 	}
-	setBusData(0xff, 0xff);
-}
 
-void sendBusPacket(uint8_t addr, uint8_t instr)
+	bool write(uint16_t data)
+	{
+		if(size + 2 >= bufferSize) return false;
+		write((data >>  0) & 0xff);
+		write((data >>  8) & 0xff);
+		return true;
+	}
+
+	bool write(uint32_t data)
+	{
+		if(size + 4 >= bufferSize) return false;
+		write((data >>  0) & 0xff);
+		write((data >>  8) & 0xff);
+		write((data >> 16) & 0xff);
+		write((data >> 24) & 0xff);
+		return true;
+	}
+
+	bool read(uint8_t &data)
+	{
+		if(size == 0) return false;
+		data = buffer[pos];
+		pos = (pos + 1) & (bufferSize - 1);
+		return true;
+	}
+
+	bool read(uint16_t &data)
+	{
+		if(size < 2) return false;
+		uint8_t b;
+		read(b);
+		data = b;
+		read(b);
+		data |= ((uint16_t)b) << 8;
+		return true;
+	}
+
+	bool read(uint32_t &data)
+	{
+		if(size < 4) return false;
+		uint8_t b;
+		read(b);
+		data = b;
+		read(b);
+		data |= ((uint16_t)b) << 8;
+		read(b);
+		data |= ((uint16_t)b) << 16;
+		read(b);
+		data |= ((uint16_t)b) << 24;
+		return true;
+	}
+
+	int space()
+	{
+		return bufferSize - size;
+	}
+};
+
+class Bus
 {
-	int bank = addr & 15;//addr >> 4;
-	if(addr == 255) bank = -1;
-	setBusData(addr, instr);
-	setMcuIo1(1, bank);
-	clockDelay();
-	setMcuIo1(0, bank);
-	clockDelay();
-	setBusData(0xff, 0xff);	
-}
+	public:
+
+	enum State
+	{
+		STATE_IDLE = 0x00,
+		STATE_RECEIVE = 0x01,
+		STATE_TRANSMIT = 0x02,
+		STATE_ERROR = 0xff
+	};
+
+	enum RequestType
+	{
+		REQUEST_RESET = 0,
+		REQUEST_RECIEVE = 1,
+		REQUEST_TRANSMIT = 2,
+		REQUEST_BROADCAST = 3
+	};
+
+	enum ClientState
+	{
+		HOST_STATE_HAS_MORE_DATA = 0,
+		HOST_STATE_END_OF_TRANSMISSION = 1, //last packet data bits
+	};
+
+	RingBuffer<> inBuffer;
+	RingBuffer<> outBuffer;
+	State state;
+	uint8_t id;
+
+	Bus()
+		:state(STATE_IDLE), id(0)
+	{
+	}
+
+	virtual bool initIo() = 0;
+
+	bool init()
+	{
+		state = STATE_ERROR;
+		if(initIo()) return false;
+		state = STATE_IDLE;
+		return true;
+	}
+
+	virtual void enableReceive() = 0;
+	virtual void enableTransmit() = 0;
+	virtual void disableReceive() = 0;
+	virtual void disableTransmit() = 0;
+
+	virtual void setCMD(uint8_t id) = 0;
+	virtual void resetCMD(uint8_t id) = 0;
+
+	virtual void setCLK() = 0;
+	virtual void resetCLK() = 0;
+	virtual bool getCLK() = 0;
+
+	virtual void setREADY() = 0;
+	virtual void resetREADY() = 0;
+	virtual bool getREADY() = 0;
+
+	virtual void setFULL() = 0;
+	virtual void resetFULL() = 0;
+	virtual bool getFULL() = 0;
+
+	virtual void setEOT() = 0;
+	virtual void resetEOT() = 0;
+	virtual bool getEOT() = 0;
+
+	virtual void setType(RequestType type) = 0;
+	virtual RequestType getType() = 0;
+	virtual void resetType() = 0;
+
+	virtual void setData(uint8_t data) = 0;
+	virtual uint8_t getData() = 0;
+	virtual void resetData() = 0;
+
+	virtual void debug(uint8_t data) {};
+
+	virtual void processReceivedData() = 0;
+};

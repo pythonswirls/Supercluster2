@@ -1,5 +1,4 @@
 #pragma once
-#include "bus.h"
 
 enum MCUState
 {
@@ -15,6 +14,7 @@ volatile uint8_t mcuStates[MAX_MCUS];
 
 void pingMCUs()
 {
+	/*
 	sendBusPacket(0, BUS_PING);
 	for(int i = 0; i < MAX_MCUS; i++)
 	{
@@ -36,7 +36,8 @@ void pingMCUs()
 			mcuStates[i] = MCU_IDLE;
 		else
 			mcuStates[i] = MCU_BUSY;*/
-	}
+	/*}
+	*/
 }
 
 void initMCUs()

@@ -1,4 +1,6 @@
 #pragma once
+#include "debug.h"
+#include <stdint.h>
 
 enum BusInstruction
 {
@@ -19,204 +21,165 @@ enum BusInstruction
 	BUS_READ = 0xfe
 };
 
-////////// HAL /////////////
-
-void initBus()
+template<int bufferSize = 32>	//needs to be power of two
+class RingBuffer
 {
-    uint32_t cfg = 0;
-    for(int i = 0; i < 8; i++)
-        cfg |= (0b0100 /*open drain*/ | 0b11 /*30MHz output*/) << (4 * i);
-    GPIOC->OUTDR = 0xff;    //for open drain need to leave high for others to speak
-    GPIOC->CFGLR = cfg;
-    GPIOD->OUTDR = 0xff;
-    GPIOD->CFGLR = cfg;
-}
+	public:
+	uint8_t buffer[bufferSize];
+	uint32_t pos;
+	uint32_t size;
 
-uint8_t readBusA()
-{
-    return GPIOC->INDR;
-}
-
-uint8_t readBusB()
-{
-    return GPIOD->INDR;
-}
-
-void writeBusA(uint8_t b)
-{
-    GPIOC->OUTDR = b;
-}
-
-void writeBusB(uint8_t b)
-{
-    GPIOD->OUTDR = b;
-}
-
-void clearBusA()
-{
-    GPIOC->OUTDR = 0xff;	//open drain mode
-}
-
-void clearBusB()
-{
-    GPIOD->OUTDR = 0xff;	//open drain mode
-}
-
-int getIo0()
-{
-	return (GPIOA->INDR >> 1) & 1;
-}
-
-int getIo1()
-{
-	return (GPIOA->INDR >> 2) & 1;
-}
-
-//////////////////////////////////////////////////
-
-bool readBusByte(uint8_t id, uint8_t &b)
-{
-	while(getIo1())
+	RingBuffer():
+		pos(0),
+		size(0)
 	{
-		//wait for this clock to pass
 	}
-	while(!getIo1())
+
+	bool write(uint8_t data)
 	{
-		//wait for nect clock
+		if(size + 1 >= bufferSize) return false;
+		buffer[(pos + size) & (bufferSize - 1)] = data;
+		size++;
+		return true;
 	}
-	if(readBusA() != id) return false;
-	b = readBusB();
-	return true;
-}
 
-bool readBusInt32(uint8_t id, int32_t &i)
-{
-	uint8_t b;
-	if(!readBusByte(id, b)) return false;
-	i = b;
-	if(!readBusByte(id, b)) return false;
-	i |= ((uint32_t)b) << 8;
-	if(!readBusByte(id, b)) return false;
-	i |= ((uint32_t)b) << 16;
-	if(!readBusByte(id, b)) return false;
-	i |= ((uint32_t)b) << 24;
-	return true;
-}
-
-volatile bool busWriting = 0;
-volatile int busInBufferCurrent = 0;
-volatile int busInBufferEnd = 0;
-volatile int busOutBufferCurrent = 0;
-volatile int busOutBufferEnd = 0;
-volatile bool busInOverflow = false;
-volatile bool busRead = false;
-volatile uint8_t busId = 0;
-volatile uint8_t busOutBuffer[32];
-volatile uint8_t busInBuffer[32];
-volatile uint8_t interruptCount = 0;
-
-void setBusId(uint8_t id)
-{
-	busId = id;
-}
-
-bool writeBusByte(uint8_t b)
-{
-	int newEnd = (busOutBufferEnd + 1) & 31;
-	if(newEnd == busOutBufferCurrent) return false;
-	busOutBuffer[busOutBufferEnd] = b;
-	busOutBufferEnd = newEnd;
-	return true;
-}
-
-bool readBusByte(uint8_t &b)
-{
-	if(busInBufferCurrent == busInBufferEnd) return false;
-	b = busInBuffer[busInBufferCurrent];
-	busInBufferCurrent = (busInBufferCurrent + 1) & 31;
-	return true;
-}
-
-void __attribute__((interrupt("WCH-Interrupt-fast"))) busClockInterrupt(void)
-{
-//    if(EXTI->INTFR & EXTI_Line2)
+	bool write(uint16_t data)
 	{
-		EXTI->INTFR = EXTI_Line2;
-		if(GPIOA->INDR & 4) //rising edge
-		{
-			if(!busWriting)
-			{
-				//read new command
-				if(readBusA() == busId)
-				{
-					uint8_t data = readBusB();
-					if(data == BUS_READ)	//host request data
-					{
-						busRead = true;
-						return;
-					}
-					//queue other instruction/data to process
-					int end = (busInBufferEnd + 1) & 31;
-					if(end == busInBufferCurrent) //buffer overflow
-						busInOverflow = true;
-					else
-					{
-						busInBuffer[busInBufferEnd] = data;
-						busInBufferEnd = end;
-					}
-				}
-			}
-			else
-			busWriting = false;
-		}
-		else
-		{
-			if(busOutBufferCurrent == busOutBufferEnd) //all data Sent
-			{
-				clearBusA();
-				clearBusB();
-			}
-			else
-			{
-				writeBusA(busId);
-				writeBusB(busOutBuffer[busOutBufferCurrent]);
-				busOutBufferCurrent = (busOutBufferCurrent + 1) & 31;
-			}
-			//interruptCount++;
-		}
+		if(size + 2 >= bufferSize) return false;
+		write((data >>  0) & 0xff);
+		write((data >>  8) & 0xff);
+		return true;
 	}
-}
 
+	bool write(uint32_t data)
+	{
+		if(size + 4 >= bufferSize) return false;
+		write((data >>  0) & 0xff);
+		write((data >>  8) & 0xff);
+		write((data >> 16) & 0xff);
+		write((data >> 24) & 0xff);
+		return true;
+	}
 
+	bool read(uint8_t &data)
+	{
+		if(size == 0) return false;
+		data = buffer[pos];
+		pos = (pos + 1) & (bufferSize - 1);
+		return true;
+	}
 
-/*bool writeBusByte(uint8_t id, uint8_t b)
+	bool read(uint16_t &data)
+	{
+		if(size < 2) return false;
+		uint8_t b;
+		read(b);
+		data = b;
+		read(b);
+		data |= ((uint16_t)b) << 8;
+		return true;
+	}
+
+	bool read(uint32_t &data)
+	{
+		if(size < 4) return false;
+		uint8_t b;
+		read(b);
+		data = b;
+		read(b);
+		data |= ((uint16_t)b) << 8;
+		read(b);
+		data |= ((uint16_t)b) << 16;
+		read(b);
+		data |= ((uint16_t)b) << 24;
+		return true;
+	}
+
+	int space()
+	{
+		return bufferSize - size;
+	}
+};
+
+class Bus
 {
-	while(getIo1())
-	{
-		//wait for this clock to pass
-	}
-	writeBusA(id);
-	writeBusB(interruptCount);
-	while(!getIo1())
-	{
-		//wait for next clock
-	}
-	while(getIo1())
-	{
-		//wait for this clock to pass
-	}
-	//clear the bus
-	clearBusA();
-	clearBusB();
+	public:
 
-	return true;
-}*/
+	enum State
+	{
+		STATE_IDLE = 0x00,
+		STATE_RECEIVE = 0x01,
+		STATE_TRANSMIT = 0x02,
+		STATE_ERROR = 0xff
+	};
 
-bool writeBusInt32(uint8_t id, int32_t i)
-{
-	if(!writeBusByte((i >>  0) & 0xff)) return false;
-	if(!writeBusByte((i >>  8) & 0xff)) return false;
-	if(!writeBusByte((i >> 16) & 0xff)) return false;
-	if(!writeBusByte((i >> 24) & 0xff)) return false;
-	return true;
-}
+	enum RequestType
+	{
+		REQUEST_RESET = 0,
+		REQUEST_RECIEVE = 1,
+		REQUEST_TRANSMIT = 2,
+		REQUEST_BROADCAST = 3
+	};
+
+	enum ClientState
+	{
+		HOST_STATE_HAS_MORE_DATA = 0,
+		HOST_STATE_END_OF_TRANSMISSION = 1, //last packet data bits
+	};
+
+	RingBuffer<> inBuffer;
+	RingBuffer<> outBuffer;
+	State state;
+	uint8_t id;
+
+	Bus()
+		:state(STATE_IDLE), id(0)
+	{
+	}
+
+	virtual bool initIo() = 0;
+
+	bool init()
+	{
+		state = STATE_ERROR;
+		if(initIo()) return false;
+		state = STATE_IDLE;
+		return true;
+	}
+
+	virtual void enableReceive() = 0;
+	virtual void enableTransmit() = 0;
+	virtual void disableReceive() = 0;
+	virtual void disableTransmit() = 0;
+
+	virtual void setCMD(uint8_t id) = 0;
+	virtual void resetCMD(uint8_t id) = 0;
+
+	virtual void setCLK() = 0;
+	virtual void resetCLK() = 0;
+	virtual bool getCLK() = 0;
+
+	virtual void setREADY() = 0;
+	virtual void resetREADY() = 0;
+	virtual bool getREADY() = 0;
+
+	virtual void setFULL() = 0;
+	virtual void resetFULL() = 0;
+	virtual bool getFULL() = 0;
+
+	virtual void setEOT() = 0;
+	virtual void resetEOT() = 0;
+	virtual bool getEOT() = 0;
+
+	virtual void setType(RequestType type) = 0;
+	virtual RequestType getType() = 0;
+	virtual void resetType() = 0;
+
+	virtual void setData(uint8_t data) = 0;
+	virtual uint8_t getData() = 0;
+	virtual void resetData() = 0;
+
+	virtual void debug(uint8_t data) {};
+
+	virtual void processReceivedData() = 0;
+};
