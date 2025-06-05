@@ -74,10 +74,8 @@ void busLoop()
 	{
 		while(bus.state != Bus::STATE_IDLE || bus.inBuffer.size == 0)
 		{
-			//led((GPIOA->INDR >> 2) & 1);
 			Delay_Us(100);
 		}
-		blink();
 		uint8_t cmd = 0;
 		bus.inBuffer.read(cmd);
 		switch(cmd)

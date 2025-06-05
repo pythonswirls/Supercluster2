@@ -117,7 +117,7 @@ class Bus
 	enum RequestType
 	{
 		REQUEST_RESET = 0,
-		REQUEST_RECIEVE = 1,
+		REQUEST_RECEIVE = 1,
 		REQUEST_TRANSMIT = 2,
 		REQUEST_BROADCAST = 3
 	};
@@ -160,9 +160,9 @@ class Bus
 	virtual void resetCLK() = 0;
 	virtual bool getCLK() = 0;
 
-	virtual void setREADY() = 0;
-	virtual void resetREADY() = 0;
-	virtual bool getREADY() = 0;
+	virtual void setACK() = 0;
+	virtual void resetACK() = 0;
+	virtual bool getACK() = 0;
 
 	virtual void setFULL() = 0;
 	virtual void resetFULL() = 0;
@@ -184,7 +184,7 @@ class Bus
 	{
 		resetCMD(id);
 		resetCLK();
-		resetREADY();
+		resetACK();
 		resetFULL();
 		resetEOT();
 		resetType();

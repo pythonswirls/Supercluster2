@@ -13,35 +13,36 @@ class ClientBus: public Bus
 
 	void handleRequest()
 	{
-		if(state != STATE_IDLE)
+		RequestType type = getType();
+		if(state != STATE_IDLE || type == REQUEST_RESET)
 		{
+			//debug(2);
 			//error
 			resetEOT();
 			resetFULL();
 			resetData();
-			resetREADY();
+			resetACK();
 			if(state == STATE_RECEIVE) disableReceive();
 			if(state == STATE_TRANSMIT) disableTransmit();
 			state = STATE_IDLE;
 			//state = STATE_ERROR;
-			//return;
+			return;
 		}
-		RequestType type = getType();
 		switch(type)
 		{
-			case REQUEST_RECIEVE:
-			//if(getData() != id) break;
+			case REQUEST_RECEIVE:
+			if(getData() != id) break;
 			case REQUEST_BROADCAST:
 				enableReceive();
 				if(inBuffer.space() == 0) setFULL();
 				state = STATE_RECEIVE;
-				setREADY();
+				setACK();
 				break;
 			case REQUEST_TRANSMIT:
 				enableTransmit();
 				state = STATE_TRANSMIT;
 				if(outBuffer.size == 0) setEOT();
-				setREADY();
+				setACK();
 				break;
 			case REQUEST_RESET:
 				break;
@@ -51,47 +52,47 @@ class ClientBus: public Bus
 	void handleDataClockHigh()
 	{
 		//debug(1);
-		resetREADY();
+		resetACK();
+		if(getEOT())
+		{
+			//end of transmission
+			if(state == STATE_RECEIVE)
+			{
+				disableReceive();
+				resetFULL();
+				processReceivedData();
+				resetACK();
+				state = STATE_IDLE;
+			}
+			else if(state == STATE_TRANSMIT)
+			{
+				disableTransmit();
+				resetEOT();
+				resetData();
+				resetACK();
+				state = STATE_IDLE;
+			}
+		}
 	}
 
 	void handleDataClockLow()
 	{
 		if(state == STATE_RECEIVE)
 		{
-			if(getEOT())
-			{
-				//end of transmission
-				disableReceive();
-				resetREADY();
-				resetFULL();
-				processReceivedData();
-				state = STATE_IDLE;
-				return;
-			}
 			uint8_t data = getData();
 			inBuffer.write(data);
 			if(inBuffer.space() == 0)
 				setFULL();
-			setREADY();
+			setACK();
 		}
 		else
 		if(state == STATE_TRANSMIT)
 		{
-			if(getEOT())
-			{
-				//end of transmission
-				disableTransmit();
-				resetEOT();
-				resetData();
-				resetREADY();
-				state = STATE_IDLE;
-				return;
-			}
 			uint8_t data;
 			outBuffer.read(data);
 			setData(data);
 			if(outBuffer.size == 0) setEOT();
-			setREADY();
+			setACK();
 		}
 		else
 		{

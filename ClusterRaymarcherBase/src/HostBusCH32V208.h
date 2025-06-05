@@ -65,17 +65,17 @@ class HostBusCH32V208: public HostBus
 	{
 	}
 
-	virtual void setREADY() 
+	virtual void setACK() 
 	{
 		GPIOB->BCR = 0b0001000000000000; 	//set PB12 low, ready to receive or transmit
 	}
 
-	virtual void resetREADY()
+	virtual void resetACK()
 	{
 		GPIOB->BSHR = 0b0001000000000000; 	//set PB12 high, reset ready to receive or transmit
 	}
 
-	virtual bool getREADY()
+	virtual bool getACK()
 	{
 		return (GPIOB->INDR & 0b0001000000000000) == 0;	 //get PB12
 	}
@@ -87,7 +87,7 @@ class HostBusCH32V208: public HostBus
 
 	virtual void resetFULL()
 	{
-		GPIOB->BCR = 0b0010000000000000; //set PB13 low, ready to receive or transmit
+		GPIOB->BSHR = 0b0010000000000000; //set PB13 low, ready to receive or transmit
 	}
 
 	virtual bool getFULL()

@@ -82,17 +82,17 @@ class ClientBusCH32V003: public ClientBus
 		GPIOD->BSHR = 0b01111101;			//release open drain lines, avoid D1 and D7 here to have swio still active
 	}
 
-	virtual void setREADY() 
+	virtual void setACK() 
 	{
 		GPIOD->BCR = 0b00010000; //set PD4 low, ready to receive or transmit
 	}
 
-	virtual void resetREADY()
+	virtual void resetACK()
 	{
 		GPIOD->BSHR = 0b00010000; //set PD4 high, not ready
 	}
 
-	virtual bool getREADY()
+	virtual bool getACK()
 	{
 		return (GPIOD->INDR & 0b00010000) == 0;
 	}
@@ -104,7 +104,7 @@ class ClientBusCH32V003: public ClientBus
 
 	virtual void resetFULL()
 	{
-		GPIOD->BCR = 0b00100000; //set PD5 low, ready to receive or transmit
+		GPIOD->BSHR = 0b00100000; //set PD5 low, ready to receive or transmit
 	}
 
 	virtual bool getFULL()

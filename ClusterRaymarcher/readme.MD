@@ -4,28 +4,16 @@ Client perspective:
 
 A1: LED
 
-A2:  CMD line
+A2:  CMD 
 
-C0-7: Open drain A
+C0-7: DATA (open drain)
 
-D0-7: Open drain B
+D0: CLK (open drain)
 
-CMD: low
+D2..D3: Packet Type (0: reset, 1:RECEIVE, 2:TRANSMIT, 3:BROADCAST) (open drain)
 
-packet start
+D4: ACK
 
-A0: CLK
-A1-A2: 0: RESET, 1: HOST_PACKET
-2: CLIENT_PACKET, 3: BROADCAST
-A4-A7: PACKET_SIZE (or MAX size). optional
+D5: FULL
 
-B0-B7: address
-
-packet body lines
-
-A0: CLK
-A1-A2: 0: ERROR, 1: OK, 2: RESERVED, 3: NOT_PRESENT
-A3: 0: MORE_DATA, 1: END OF DATA
-A4 - A7: CRC (optional)
-
-B0-B7: DATA
+D6: EOT
