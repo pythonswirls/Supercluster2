@@ -77,6 +77,7 @@ void busLoop()
 			//led((GPIOA->INDR >> 2) & 1);
 			Delay_Us(100);
 		}
+		blink();
 		uint8_t cmd = 0;
 		bus.inBuffer.read(cmd);
 		switch(cmd)
@@ -118,7 +119,7 @@ int main(void)
     blink();
     Delay_Ms(5000);
 	unlockD7();
-    disableSWD();
+    disableSWD(); 
 
     initPheripherals();
     blink();

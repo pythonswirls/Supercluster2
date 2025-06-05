@@ -66,6 +66,7 @@ class RingBuffer
 		if(size == 0) return false;
 		data = buffer[pos];
 		pos = (pos + 1) & (bufferSize - 1);
+		size--;
 		return true;
 	}
 
@@ -178,6 +179,17 @@ class Bus
 	virtual void setData(uint8_t data) = 0;
 	virtual uint8_t getData() = 0;
 	virtual void resetData() = 0;
+
+	void resetSignals(uint8_t id)
+	{
+		resetCMD(id);
+		resetCLK();
+		resetREADY();
+		resetFULL();
+		resetEOT();
+		resetType();
+		resetData();
+	}
 
 	virtual void debug(uint8_t data) {};
 

@@ -13,20 +13,24 @@ class ClientBus: public Bus
 
 	void handleRequest()
 	{
-		debug(1);
 		if(state != STATE_IDLE)
 		{
 			//error
+			resetEOT();
+			resetFULL();
+			resetData();
+			resetREADY();
 			if(state == STATE_RECEIVE) disableReceive();
 			if(state == STATE_TRANSMIT) disableTransmit();
-			state = STATE_ERROR;
-			return;
+			state = STATE_IDLE;
+			//state = STATE_ERROR;
+			//return;
 		}
 		RequestType type = getType();
 		switch(type)
 		{
 			case REQUEST_RECIEVE:
-				//if(getData() != id) break;
+			//if(getData() != id) break;
 			case REQUEST_BROADCAST:
 				enableReceive();
 				if(inBuffer.space() == 0) setFULL();
@@ -46,6 +50,7 @@ class ClientBus: public Bus
 
 	void handleDataClockHigh()
 	{
+		//debug(1);
 		resetREADY();
 	}
 

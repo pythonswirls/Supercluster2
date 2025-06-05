@@ -2,7 +2,7 @@
 #include "Bus.h"
 #include "debug.h"
 #include <stdint.h>
-volatile int errorCode = 0;
+
 class HostBus: public Bus
 {
 	public:
@@ -29,11 +29,7 @@ class HostBus: public Bus
 			wait--;
 			if(wait <= 0) 
 			{
-				errorCode = 1;
-				resetCMD(id);
-				resetType();
-				resetCLK();
-				resetData();
+				resetSignals(id);
 				return false; //timeout
 			}
 		}
@@ -44,14 +40,33 @@ class HostBus: public Bus
 			setEOT(); //set end of transmission
 			resetData();
 			resetCLK();
-			while(getREADY()); //wait for ready to be reset
+			wait = timeout * 10;
+			while(getREADY())
+			{
+				Delay_Us(100);
+				wait--;
+				if(wait <= 0) 
+				{
+					resetSignals(id);
+					return false; //timeout
+				}
+			}
 			resetEOT();
 			//error, buffer is full
-			errorCode = 2;
 			return false;
 		}
 		resetCLK();
-		while(getREADY()); //wait for ready to be reset
+		wait = timeout * 10;
+		while(getREADY())
+		{
+			Delay_Us(100);
+			wait--;
+			if(wait <= 0) 
+			{
+				resetSignals(id);
+				return false; //timeout
+			}
+		}
 		//state = STATE_TRANSMIT;
 		for(int i = 0; i < size; i++)
 		{
@@ -65,18 +80,36 @@ class HostBus: public Bus
 				setEOT(); //set end of transmission
 				resetData();
 				resetCLK();
-				while(getREADY()); //wait for ready to be reset
+				wait = timeout * 10;
+				while(getREADY())			
+				{
+					Delay_Us(100);
+					wait--;
+					if(wait <= 0) 
+					{
+						resetSignals(id);
+						return false; //timeout
+					}
+				}
 				resetEOT();
-				errorCode = 2;
 				//error, buffer is full
 				return false;
 			}
 			resetCLK();
-			while(getREADY()); //wait for ready to be reset
+			wait = timeout * 10;
+			while(getREADY())			
+			{
+				Delay_Us(100);
+				wait--;
+				if(wait <= 0) 
+				{
+					resetSignals(id);
+					return false; //timeout
+				}
+			}
 		}
 		resetData();
 		resetEOT();
-		errorCode = 255;
 		return true;
 	}
 };

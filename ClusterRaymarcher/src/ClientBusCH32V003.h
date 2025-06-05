@@ -61,12 +61,12 @@ class ClientBusCH32V003: public ClientBus
 
 	virtual void enableReceive()
 	{
-		EXTI->INTENR = EXTI_INTENR_MR0; // Enable EXT7 on line 0
+		EXTI->INTENR |= EXTI_INTENR_MR0; // Enable EXT7 on line 0
 	}
 
 	virtual void enableTransmit()
 	{
-		EXTI->INTENR = EXTI_INTENR_MR0; // Enable EXT7 on line 0
+		EXTI->INTENR |= EXTI_INTENR_MR0; // Enable EXT7 on line 0
 	}
 
 	virtual void disableReceive()
