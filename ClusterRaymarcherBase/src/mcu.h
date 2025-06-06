@@ -21,12 +21,11 @@ void pingMCUs()
 	{
 		uint8_t ping = 0;
 		int size = 0;
-		HostBus::ErrorCode code = bus.receivePacket(1 << (i & 0xf), i, &ping, size, 1);
+		HostBus::ErrorCode code = bus.receivePacket(1 << (i & 0xf), i, &ping, size, 1, 100000);
 		if(code == HostBus::ERROR_SUCCESS && size == 1 && ping == BUS_PING)
-		{
 			mcuStates[i] = MCU_IDLE;
-			continue;
-		}
+		else
+			mcuStates[i] = MCU_NA;
 	}
 }
 
@@ -35,3 +34,4 @@ void initMCUs()
 	for(int i = 0; i < MAX_MCUS; i++)
 		mcuStates[i] = MCU_NA;
 }
+

@@ -36,6 +36,7 @@ class ClientBus: public Bus
 				setACK();
 				break;
 			case REQUEST_TRANSMIT:
+				if(getData() != id) break;
 				enableTransmit();
 				state = STATE_TRANSMIT;
 				if(outBuffer.size == 0) setEOT();

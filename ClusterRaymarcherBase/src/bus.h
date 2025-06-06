@@ -16,7 +16,7 @@ enum BusInstruction
 	BUS_WRITE_FLASH = 0xf4,
 	BUS_JUMP_TO_FLASH = 0xf5,
 	BUS_EXECUTE = 0xf6,
-	BUS_HALT = 0xf87,
+	BUS_HALT = 0xf7,
 	BUS_PING = 0xf8,
 	BUS_READ = 0xfe
 };
@@ -46,18 +46,18 @@ class RingBuffer
 	bool write(uint16_t data)
 	{
 		if(size + 2 >= bufferSize) return false;
-		write((data >>  0) & 0xff);
-		write((data >>  8) & 0xff);
+		write((uint8_t)((data >>  0) & 0xff));
+		write((uint8_t)((data >>  8) & 0xff));
 		return true;
 	}
 
 	bool write(uint32_t data)
 	{
 		if(size + 4 >= bufferSize) return false;
-		write((data >>  0) & 0xff);
-		write((data >>  8) & 0xff);
-		write((data >> 16) & 0xff);
-		write((data >> 24) & 0xff);
+		write((uint8_t)((data >>  0) & 0xff));
+		write((uint8_t)((data >>  8) & 0xff));
+		write((uint8_t)((data >> 16) & 0xff));
+		write((uint8_t)((data >> 24) & 0xff));
 		return true;
 	}
 

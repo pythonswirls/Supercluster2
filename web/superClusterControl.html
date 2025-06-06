@@ -7,29 +7,35 @@
     body {
       font-family: sans-serif;
       padding: 20px;
-      background-color: #f9f9f9;
+      background-color: #121212;
+      color: #eee;
     }
     button, input[type="number"] {
       margin: 5px;
       padding: 8px 12px;
       font-size: 14px;
-      border: 1px solid #ccc;
+      border: 1px solid #444;
       border-radius: 4px;
-      background-color: #eee;
+      background-color: #333;
+      color: #eee;
       cursor: pointer;
     }
+    input[type="number"] {
+      width: 60px;
+    }
     button:hover {
-      background-color: #ddd;
+      background-color: #555;
     }
     .status {
       font-weight: bold;
-      color: green;
+      color: lightgreen;
       margin-left: 10px;
     }
     #log {
       white-space: pre;
-      border: 1px solid #ccc;
-      background-color: white;
+      border: 1px solid #444;
+      background-color: #1e1e1e;
+      color: #ccc;
       padding: 10px;
       max-height: 200px;
       overflow-y: scroll;
@@ -39,37 +45,22 @@
       display: flex;
       align-items: center;
       margin: 10px 0;
+      gap: 10px;
     }
-    .checkbox-group {
-      display: flex;
-      flex-wrap: wrap;
-      margin-top: 10px;
-      gap: 5px;
-    }
-    .checkbox-group label {
-      display: flex;
-      align-items: center;
-      font-size: 12px;
-      margin-right: 5px;
-    }
-    #mcuGrid {
+    .mcu-grid {
       display: grid;
-      grid-template-columns: repeat(16, 20px);
-      gap: 4px;
-      margin-top: 10px;
+      grid-template-columns: repeat(16, 10px);
+      grid-gap: 2px;
+      margin: 10px 0;
     }
-    .mcu-cell {
-      width: 20px;
-      height: 20px;
-      text-align: center;
-      line-height: 20px;
-      border-radius: 3px;
-      background-color: #ccc;
-      font-size: 10px;
+    .mcu-box {
+      width: 10px;
+      height: 10px;
+      background-color: gray;
     }
-    .state-na { background-color: #eee; }
-    .state-idle { background-color: #8f8; }
-    .state-busy { background-color: #f88; }
+    .mcu-box.active {
+      background-color: lime;
+    }
   </style>
 </head>
 <body>
@@ -80,7 +71,7 @@
 
   <div class="control-row">
     <button id="setIndexBtn">Set Index</button>
-    <input type="range" id="indexSlider" min="0" max="240" step="16" value="0" style="margin-left: 10px;">
+    <input type="range" id="indexSlider" min="0" max="240" step="16" value="0">
     <span id="indexValue">0</span>
   </div>
 
@@ -95,18 +86,26 @@
   </div>
 
   <div class="control-row">
-    <label>MCU Group (16-bit):</label>
-  </div>
-  <div class="checkbox-group">
-    <script>
-      for (let i = 15; i >= 0; i--) {
-        document.write(`<label><input type='checkbox' id='bit${i}' checked> ${i}</label>`);
-      }
-    </script>
+    <label for="idCoord">ID:</label>
+    <input type="number" id="idCoord" value="0" min="0" max="255">
+    <label for="ox">OX:</label>
+    <input type="number" id="ox" value="0">
+    <label for="oy">OY:</label>
+    <input type="number" id="oy" value="0">
+    <label for="oz">OZ:</label>
+    <input type="number" id="oz" value="0">
+    <label for="vx">VX:</label>
+    <input type="number" id="vx" value="0">
+    <label for="vy">VY:</label>
+    <input type="number" id="vy" value="0">
+    <label for="vz">VZ:</label>
+    <input type="number" id="vz" value="65536">
+    <button id="renderPixelBtn">Render Pixel</button>
   </div>
 
-  <h3>MCU States</h3>
-  <div id="mcuGrid"></div>
+  <h3>MCU Status</h3>
+  <div id="mcuStatus"></div>
+  <div class="mcu-grid" id="mcuGrid"></div>
 
   <h3>Response Log</h3>
   <div id="log"></div>
@@ -115,19 +114,20 @@
     const BUS_SET_INDEX = 0xf0;
     const BUS_LED = 0xe0;
     const BUS_PING = 0xf8;
+    const BUS_RAYMARCHER_RENDER_PIXEL = 0x41;
 
     let port = null;
     let reader = null;
     let writer = null;
     let readBuffer = [];
 
-    // Setup grid
     const mcuGrid = document.getElementById("mcuGrid");
+    const mcuBoxes = [];
     for (let i = 0; i < 160; i++) {
-      const cell = document.createElement("div");
-      cell.className = "mcu-cell state-na";
-      cell.id = `mcu-${i}`;
-      mcuGrid.appendChild(cell);
+      const div = document.createElement("div");
+      div.className = "mcu-box";
+      mcuGrid.appendChild(div);
+      mcuBoxes.push(div);
     }
 
     async function connectSerial() {
@@ -139,7 +139,7 @@
         reader = port.readable.getReader();
 
         document.getElementById("status").textContent = "Connected";
-        document.getElementById("status").style.color = "green";
+        document.getElementById("status").style.color = "lightgreen";
 
         readLoop();
       } catch (err) {
@@ -178,30 +178,27 @@
     }
 
     function handleResponse(value) {
-      const hex = [...value].map(b => b.toString(16).padStart(2, '0')).join(' ');
-      log(hex);
-
-      const length = value[0];
-      const identifier = value[1];
-
-      if (identifier === BUS_PING && value.length >= length + 1) {
-        for (let i = 0; i < length - 1 && i < 160; i++) {
-          const cell = document.getElementById(`mcu-${i}`);
-          const state = value[i + 2];
-          cell.className = 'mcu-cell';
-          if (state === 0) cell.classList.add('state-na');
-          else if (state === 1) cell.classList.add('state-idle');
-          else if (state === 255) cell.classList.add('state-busy');
-          else cell.classList.add('state-na');
+      const id = value[1];
+      if (id === BUS_PING) {
+        document.getElementById("mcuStatus").textContent = 'MCU Status: ' + [...value].map(b => b.toString(16).padStart(2, '0')).join(' ');
+        for (let i = 0; i < mcuBoxes.length; i++) {
+          mcuBoxes[i].classList.remove("active");
+        }
+        for (let i = 2; i < value.length && i - 2 < mcuBoxes.length; i++) {
+          if (value[i]) {
+            mcuBoxes[i - 2].classList.add("active");
+          }
         }
       }
+      const hex = [...value].map(b => b.toString(16).padStart(2, '0')).join(' ');
+      log("RX: " + hex);
     }
 
     async function sendInstruction(instruction, data = []) {
       if (!writer) return;
       const payload = new Uint8Array([instruction, ...data]);
       await writer.write(payload);
-      log(`TX: ${[...payload].map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
+      log("TX: " + [...payload].map(b => b.toString(16).padStart(2, '0')).join(' '));
     }
 
     function log(text) {
@@ -232,18 +229,36 @@
       sendInstruction(BUS_PING);
     });
 
-    // Optional: reconnect on reload
+    document.getElementById("renderPixelBtn").addEventListener("click", () => {
+      const id = parseInt(document.getElementById("idCoord").value) || 0;
+      const ox = parseInt(document.getElementById("ox").value) || 0;
+      const oy = parseInt(document.getElementById("oy").value) || 0;
+      const oz = parseInt(document.getElementById("oz").value) || 0;
+      const vx = parseInt(document.getElementById("vx").value) || 0;
+      const vy = parseInt(document.getElementById("vy").value) || 0;
+      const vz = parseInt(document.getElementById("vz").value) || 0;
+
+      const encode32 = val => [val & 0xFF, (val >> 8) & 0xFF, (val >> 16) & 0xFF, (val >> 24) & 0xFF];
+      const data = [id, ...encode32(ox), ...encode32(oy), ...encode32(oz), ...encode32(vx), ...encode32(vy), ...encode32(vz)];
+
+      sendInstruction(BUS_RAYMARCHER_RENDER_PIXEL, data);
+    });
+
     window.addEventListener('DOMContentLoaded', async () => {
       if ('serial' in navigator) {
         const ports = await navigator.serial.getPorts();
         if (ports.length > 0) {
-          port = ports[0];
-          await port.open({ baudRate: 115200 });
-          writer = port.writable.getWriter();
-          reader = port.readable.getReader();
-          document.getElementById("status").textContent = "Connected";
-          document.getElementById("status").style.color = "green";
-          readLoop();
+          try {
+            port = ports[0];
+            await port.open({ baudRate: 115200 });
+            writer = port.writable.getWriter();
+            reader = port.readable.getReader();
+            document.getElementById("status").textContent = "Connected";
+            document.getElementById("status").style.color = "lightgreen";
+            readLoop();
+          } catch (err) {
+            console.error("Auto-connect error:", err);
+          }
         }
       }
     });

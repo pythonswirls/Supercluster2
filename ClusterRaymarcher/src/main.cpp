@@ -19,45 +19,46 @@ void initPheripherals()
 
 }
 
-/*
-bool readBusVec3(uint8_t id, Vec3 &vec)
+
+bool readBusVec3(Vec3 &vec)
 {
-	int32_t i;
-	if(!readBusInt32(id, i)) return false;
-	vec.v[0] = i;
-	if(!readBusInt32(id, i)) return false;
-	vec.v[1] = i;
-	if(!readBusInt32(id, i)) return false;
-	vec.v[2] = i;
+	uint32_t d;
+	if(!bus.inBuffer.read(d)) return false;
+	vec.v[0] = (int32_t)d;
+	if(!bus.inBuffer.read(d)) return false;
+	vec.v[1] = (int32_t)d;
+	if(!bus.inBuffer.read(d)) return false;
+	vec.v[2] = (int32_t)d;
 	return true;
 }
 
-bool writeBusVec3(uint8_t id, Vec3 &vec)
+bool writeBusVec3(Vec3 &vec)
 {
-	if(!writeBusInt32(id, vec.v[0])) return false;
-	if(!writeBusInt32(id, vec.v[1])) return false;
-	if(!writeBusInt32(id, vec.v[2])) return false;
+	if(!bus.outBuffer.write((uint32_t)vec.v[0])) return false;
+	if(!bus.outBuffer.write((uint32_t)vec.v[1])) return false;
+	if(!bus.outBuffer.write((uint32_t)vec.v[2])) return false;
 	return true;
 }
 
 Vec3 pixelColor;
 
-bool renderPixel(uint8_t id)
+bool renderPixel()
 {
+	if(bus.inBuffer.size < 24) return false;
+	//blink(1000);	
 	Vec3 pos;
 	Vec3 dir;
-	if(readBusVec3(id, pos)) return false;
-	if(readBusVec3(id, dir)) return false;
+	if(!readBusVec3(pos)) return false;
+	if(!readBusVec3(dir)) return false;
+	//blink(1000);	
 	int depth = 2;
 	pixelColor = renderPixel(pos, dir, depth);
+	writeBusVec3(pixelColor);
+//	if(!bus.outBuffer.write((uint32_t)dir.v[0])) return false;
+	//if(!writeBusVec3(dir)) return false;
+	blink(1000);
 	return true;
 }
-
-bool sendRenderPixelResult(uint8_t id)
-{
-	if(!writeBusVec3(id, pixelColor)) return false;
-	return true;
-}*/
 
 bool sendPing()
 {
@@ -72,7 +73,7 @@ void busLoop()
 	{
 		while(bus.state != Bus::STATE_IDLE || bus.inBuffer.size == 0)
 		{
-			Delay_Us(100);
+			Delay_Us(10);
 		}
 		uint8_t cmd = 0;
 		bus.inBuffer.read(cmd);
@@ -80,7 +81,7 @@ void busLoop()
 		{
 			case BUS_SET_INDEX:
 			{
-				bus.inBuffer.read(id);
+				if(!bus.inBuffer.read(id)) break;
 				setMcuIndex(id);
 				bus.id = id;
 				break;
@@ -92,10 +93,7 @@ void busLoop()
 			case BUS_RAYMARCHER_INIT:
 				break;
 			case BUS_RAYMARCHER_RENDER_PIXEL:
-				//renderPixel(id);
-				break;
-			case BUS_RAYMARCHER_RENDER_PIXEL_RESULT:
-				//sendRenderPixelResult(id);
+				renderPixel();
 				break;
 			case BUS_PING:
 				sendPing();

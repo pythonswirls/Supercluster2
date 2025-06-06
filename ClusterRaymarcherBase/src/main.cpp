@@ -95,12 +95,12 @@ int main(void)
 			case BUS_SET_INDEX:
 			{
 				uint8_t baseIndex = ser.getUint8();
-				for(uint8_t i = 0; i < 1; i++)
+				for(uint8_t i = 0; i < 16; i++)
 				{
 					uint8_t data[] = {BUS_SET_INDEX, (uint8_t)(baseIndex + i)};
 					bus.sendPacket(1 << i, 255, data, 2);
 					//bus.sendBroadcast(1 << i, data, 1);
-					Delay_Ms(100);
+					Delay_Ms(1000);
 				}
 				break;
 			}
@@ -117,6 +117,42 @@ int main(void)
 				ser.writeUint8(BUS_PING);
 				for(int i = 0; i < MAX_MCUS; i++)
 					ser.writeUint8(mcuStates[i]);
+				ser.flush();
+				break;
+			}
+			case BUS_RAYMARCHER_RENDER_PIXEL:
+			{
+				static uint8_t id;
+				id = ser.getUint8();
+				uint8_t data[25];
+				data[0] = BUS_RAYMARCHER_RENDER_PIXEL;
+				//origin
+				*(int32_t*)(&data[1]) = ser.readInt32();
+				*(int32_t*)(&data[5]) = ser.readInt32();
+				*(int32_t*)(&data[9]) = ser.readInt32();
+				//direction
+				*(int32_t*)(&data[13]) = ser.readInt32();
+				*(int32_t*)(&data[17]) = ser.readInt32();
+				*(int32_t*)(&data[21]) = ser.readInt32();
+				if(bus.sendPacket(1 << (id & 0xf), id, data, 25) != HostBus::ERROR_SUCCESS) 
+					break;
+				Delay_Ms(1000);
+				int i = 0;
+				int timeout = 1000;
+				while(i < 12)
+				{
+					Delay_Ms(1);
+					int size = 0;
+					bus.receivePacket(1 << (id & 0xf), id, &data[i], size, 25 - i);
+					i+= size;
+					timeout--;
+					if(timeout <= 0)
+						break;
+				}
+				ser.writeUint8(13);
+				ser.writeUint8(BUS_RAYMARCHER_RENDER_PIXEL);
+				for(int j = 0; j < 12; j++)
+					ser.writeUint8(data[j]);
 				ser.flush();
 				break;
 			}

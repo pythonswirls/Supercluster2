@@ -84,8 +84,54 @@ int getMcuIndex()
     return OB->Data0 & 0xff;
 }
 
+void FlashOptionData(uint8_t data0, uint8_t data1) //taken from ch32fun, thx
+{
+	constexpr uint32_t FLASH_KEY1 = 0x45670123;
+	constexpr uint32_t FLASH_KEY2 = 0xCDEF89AB;
+	constexpr uint32_t CR_OPTPG_Set = ((uint32_t)0x00000010);
+	constexpr uint32_t CR_OPTPG_Reset = ((uint32_t)0xFFFFFFEF);
+	constexpr uint32_t CR_OPTER_Set = ((uint32_t)0x00000020);
+	constexpr uint32_t CR_OPTER_Reset = ((uint32_t)0xFFFFFFDF);
+	constexpr uint32_t CR_STRT_Set = ((uint32_t)0x00000040);
+	constexpr uint32_t CR_LOCK_Set = ((uint32_t)0x00000080);
+
+	volatile uint16_t hold[6];
+	uint32_t *hold32p=(uint32_t *)hold;
+	uint32_t *ob32p=(uint32_t *)OB_BASE;
+	hold32p[0]=ob32p[0];            // Copy RDPR and USER
+	hold32p[1]=data0+(data1<<16);   // Copy in the two Data values to be written
+	hold32p[2]=ob32p[2];            // Copy WRPR0 and WEPR1
+
+	// Unlock both the general Flash and the User-selected words
+	FLASH->KEYR = FLASH_KEY1;
+	FLASH->KEYR = FLASH_KEY2;
+	FLASH->OBKEYR = FLASH_KEY1;
+	FLASH->OBKEYR = FLASH_KEY2;
+
+	FLASH->CTLR |= CR_OPTER_Set;            // OBER RW Perform user-selected word erasure
+	FLASH->CTLR |= CR_STRT_Set;             // STRT RW1 Start. Set 1 to start an erase action,hw automatically clears to 0
+	while (FLASH->STATR & FLASH_BUSY);      // Wait for flash operation to be done
+	FLASH->CTLR &= CR_OPTER_Reset;          // Disable erasure mode
+
+	// Write the held values back one-by-one
+	FLASH->CTLR |= CR_OPTPG_Set;            // OBG  RW Perform user-selected word programming
+	uint16_t *ob16p=(uint16_t *)OB_BASE;
+	for (uint32_t i = 0; i < sizeof(hold)/sizeof(hold[0]); i++) 
+	{
+		ob16p[i]=hold[i];
+		while (FLASH->STATR & FLASH_BUSY);  // Wait for flash operation to be done
+	}
+	FLASH->CTLR &= CR_OPTPG_Reset;          // Disable programming mode
+
+	FLASH->CTLR|=CR_LOCK_Set;               // Lock flash memories again
+
+	return;
+}
+
 void setMcuIndex(uint8_t addr)
 {
+	FlashOptionData(addr, 0); //set Data0 to addr, Data1 is not used
+	/*
 	uint8_t user = OB->USER & 0xff;
 
 	if(	FLASH_EraseOptionBytes() != FLASH_COMPLETE)
@@ -102,7 +148,7 @@ void setMcuIndex(uint8_t addr)
 	{
 		blink();blink();blink();
 		return;
-	}
+	}*/
 	blink(1000);
 }
 
