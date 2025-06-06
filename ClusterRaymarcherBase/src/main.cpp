@@ -95,10 +95,12 @@ int main(void)
 			case BUS_SET_INDEX:
 			{
 				uint8_t baseIndex = ser.getUint8();
-				for(uint8_t i = 0; i < 16; i++)
+				for(uint8_t i = 0; i < 1; i++)
 				{
 					uint8_t data[] = {BUS_SET_INDEX, (uint8_t)(baseIndex + i)};
-					bus.sendBroadcast(1 << i, data, 1);
+					bus.sendPacket(1 << i, 255, data, 2);
+					//bus.sendBroadcast(1 << i, data, 1);
+					Delay_Ms(100);
 				}
 				break;
 			}
@@ -111,7 +113,8 @@ int main(void)
 			case BUS_PING:
 			{
 				pingMCUs();
-				ser.writeUint8(MAX_MCUS);
+				ser.writeUint8(MAX_MCUS + 1);
+				ser.writeUint8(BUS_PING);
 				for(int i = 0; i < MAX_MCUS; i++)
 					ser.writeUint8(mcuStates[i]);
 				ser.flush();

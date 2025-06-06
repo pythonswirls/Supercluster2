@@ -14,30 +14,20 @@ volatile uint8_t mcuStates[MAX_MCUS];
 
 void pingMCUs()
 {
-	/*
-	sendBusPacket(0, BUS_PING);
+	uint8_t data[] = {BUS_PING};
+	bus.sendBroadcast(0xffff, data, 1);
+	Delay_Ms(100);	
 	for(int i = 0; i < MAX_MCUS; i++)
 	{
-		uint8_t b = 0;
-		if(!readBusByte(i, b, 0));
-		mcuStates[i] = b;
-	}
-	return;
-	for(int i = 0; i < MAX_MCUS; i++)
-	{
-		sendBusPacket(i, BUS_PING);
-		uint8_t b = 0;
-		int bank = i & 0xf;
-		if(!readBusByte(i, b, bank));
-		mcuStates[i] = b;
-		/*
-		b = 255;
-		if(b == i)
+		uint8_t ping = 0;
+		int size = 0;
+		HostBus::ErrorCode code = bus.receivePacket(1 << (i & 0xf), i, &ping, size, 1);
+		if(code == HostBus::ERROR_SUCCESS && size == 1 && ping == BUS_PING)
+		{
 			mcuStates[i] = MCU_IDLE;
-		else
-			mcuStates[i] = MCU_BUSY;*/
-	/*}
-	*/
+			continue;
+		}
+	}
 }
 
 void initMCUs()

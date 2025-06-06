@@ -16,22 +16,19 @@ class ClientBus: public Bus
 		RequestType type = getType();
 		if(state != STATE_IDLE || type == REQUEST_RESET)
 		{
-			//debug(2);
-			//error
-			resetEOT();
-			resetFULL();
-			resetData();
-			resetACK();
+			resetSignals(0);
 			if(state == STATE_RECEIVE) disableReceive();
 			if(state == STATE_TRANSMIT) disableTransmit();
 			state = STATE_IDLE;
-			//state = STATE_ERROR;
 			//return;
 		}
 		switch(type)
 		{
 			case REQUEST_RECEIVE:
-			if(getData() != id) break;
+				{
+					uint8_t data = getData();
+					if(data != 255 && data != id) break;
+				}
 			case REQUEST_BROADCAST:
 				enableReceive();
 				if(inBuffer.space() == 0) setFULL();

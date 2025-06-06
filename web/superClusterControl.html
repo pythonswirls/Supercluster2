@@ -119,7 +119,8 @@
     let port = null;
     let reader = null;
     let writer = null;
-	
+    let readBuffer = [];
+
     // Setup grid
     const mcuGrid = document.getElementById("mcuGrid");
     for (let i = 0; i < 160; i++) {
@@ -128,19 +129,6 @@
       cell.id = `mcu-${i}`;
       mcuGrid.appendChild(cell);
     }
-
-	let reconnectInterval = null;
-
-	function updateStatus(connected) {
-		const statusEl = document.getElementById("status");
-		if (connected) {
-			statusEl.textContent = "Connected";
-			statusEl.style.color = "green";
-		} else {
-			statusEl.textContent = "Disconnected";
-			statusEl.style.color = "red";
-		}
-	}
 
     async function connectSerial() {
       try {
@@ -161,50 +149,53 @@
       }
     }
 
-	let responseBuffer = [];
+    async function readLoop() {
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) {
+            readBuffer.push(...value);
+            processBufferedData();
+          }
+        }
+      } catch (err) {
+        console.error('Read error:', err);
+      }
+    }
 
-	async function readLoop() {
-		try {
-			while (true) {
-			const { value, done } = await reader.read();
-			if (done) throw new Error("Reader closed");
-			if (value) {
-				for (const byte of value) responseBuffer.push(byte);
-				processBufferedResponse();
-			}
-			}
-		} catch (err) {
-			console.error("Read error:", err);
-			handleDisconnect();
-		}
-	}
+    function processBufferedData() {
+      while (readBuffer.length >= 2) {
+        const length = readBuffer[0];
+        if (readBuffer.length >= length + 1) {
+          const packet = readBuffer.slice(0, length + 1);
+          readBuffer = readBuffer.slice(length + 1);
+          handleResponse(new Uint8Array(packet));
+        } else {
+          break;
+        }
+      }
+    }
 
+    function handleResponse(value) {
+      const hex = [...value].map(b => b.toString(16).padStart(2, '0')).join(' ');
+      log(hex);
 
-	function processBufferedResponse() {
-	while (responseBuffer.length > 0) {
-		const expectedLength = responseBuffer[0] + 1; // count + 1 header byte
-		if (responseBuffer.length < expectedLength) return; // not enough data yet
+      const length = value[0];
+      const identifier = value[1];
 
-		const fullMessage = responseBuffer.splice(0, expectedLength);
-		handleResponse(new Uint8Array(fullMessage));
-	}
-	}
-
-	function handleResponse(value) {
-	const hex = [...value].map(b => b.toString(16).padStart(2, '0')).join(' ');
-	log(`RX: ${hex}`);
-
-	const count = value[0];
-	for (let i = 0; i < count && i < 160; i++) {
-		const state = value[i + 1];
-		const cell = document.getElementById(`mcu-${i}`);
-		cell.className = 'mcu-cell';
-		if (state === 0) cell.classList.add('state-na');
-		else if (state === 1) cell.classList.add('state-idle');
-		else if (state === 255) cell.classList.add('state-busy');
-		else cell.classList.add('state-na');
-	}
-	}
+      if (identifier === BUS_PING && value.length >= length + 1) {
+        for (let i = 0; i < length - 1 && i < 160; i++) {
+          const cell = document.getElementById(`mcu-${i}`);
+          const state = value[i + 2];
+          cell.className = 'mcu-cell';
+          if (state === 0) cell.classList.add('state-na');
+          else if (state === 1) cell.classList.add('state-idle');
+          else if (state === 255) cell.classList.add('state-busy');
+          else cell.classList.add('state-na');
+        }
+      }
+    }
 
     async function sendInstruction(instruction, data = []) {
       if (!writer) return;
@@ -256,39 +247,6 @@
         }
       }
     });
-
-	async function handleDisconnect() {
-		updateStatus(false);
-
-		try {
-			if (reader) await reader.cancel();
-			if (writer) writer.releaseLock();
-			if (port && port.readable) await port.close();
-		} catch (e) {}
-
-		reader = null;
-		writer = null;
-
-		if (!reconnectInterval) {
-			reconnectInterval = setInterval(checkReconnect, 200);
-		}
-		}
-
-		async function checkReconnect() {
-		if (!port) return;
-		try {
-			await port.open({ baudRate: 115200 });
-			writer = port.writable.getWriter();
-			reader = port.readable.getReader();
-			updateStatus(true);
-			reconnectInterval && clearInterval(reconnectInterval);
-			reconnectInterval = null;
-			readLoop();
-		} catch (err) {
-			console.log("Reconnection attempt failed...");
-		}
-	}
-
   </script>
 </body>
 </html>

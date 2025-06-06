@@ -99,6 +99,7 @@ void busLoop()
 				break;
 			case BUS_PING:
 				sendPing();
+				break;
 			default:
 			//nope
 				break;
