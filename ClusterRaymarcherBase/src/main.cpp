@@ -63,12 +63,17 @@ Serializer ser;
 void sendBlink(int addr)
 {
 	const uint8_t data[] = {BUS_LED};
-	bool r = bus.sendPacket(addr, data, 1);
-	Delay_Ms(100);
-	ser.writeUint8(2);
-	ser.writeUint8(r?0:GPIOB->INDR >> 8);
-	ser.writeUint8(errorCode);
-	ser.flush();
+	
+	if(addr == 255)
+		bus.sendBroadcast(0xffff, data, 1);
+	else
+	{
+		HostBus::ErrorCode code = bus.sendPacket(1 << (addr & 15), addr, data, 1);
+	//	Delay_Ms(100);
+		ser.writeUint8(1);
+		ser.writeUint8((int8_t)code);
+		ser.flush();
+	}
 }
 
 int main(void)
@@ -93,7 +98,7 @@ int main(void)
 				for(uint8_t i = 0; i < 16; i++)
 				{
 					uint8_t data[] = {BUS_SET_INDEX, (uint8_t)(baseIndex + i)};
-					bus.sendPacket(i, data, 2);
+					bus.sendBroadcast(1 << i, data, 1);
 				}
 				break;
 			}

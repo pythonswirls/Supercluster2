@@ -153,8 +153,8 @@ class Bus
 	virtual void disableReceive() = 0;
 	virtual void disableTransmit() = 0;
 
-	virtual void setCMD(uint8_t id) = 0;
-	virtual void resetCMD(uint8_t id) = 0;
+	virtual void setCMD(uint16_t lines) = 0;
+	virtual void resetCMD(uint16_t lines) = 0;
 
 	virtual void setCLK() = 0;
 	virtual void resetCLK() = 0;
@@ -180,9 +180,9 @@ class Bus
 	virtual uint8_t getData() = 0;
 	virtual void resetData() = 0;
 
-	void resetSignals(uint8_t id)
+	void resetSignals(uint16_t lines)
 	{
-		resetCMD(id);
+		resetCMD(lines);
 		resetCLK();
 		resetACK();
 		resetFULL();

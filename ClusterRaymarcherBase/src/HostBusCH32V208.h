@@ -142,19 +142,20 @@ class HostBusCH32V208: public HostBus
 		GPIOB->BSHR = 0b0000000011111111; //set PB0-PB7 high, reset data
 	};
 
-	virtual void setCMD(uint8_t id)
+	virtual void setCMD(uint16_t lines)
 	{
-		//TODO breadcast
-//		for(int i = 0; i < 16; i++)
-//			mcuBank[i]->BCR = 1 << mcuPin[i];
-		mcuBank[id & 0xf]->BCR = 1 << mcuPin[id & 0xf];
+		for(int i = 0; i < 16; i++)
+			if(lines & (1 << i))
+				mcuBank[i]->BCR = 1 << mcuPin[i]; //set pin low
+		//mcuBank[id & 0xf]->BCR = 1 << mcuPin[id & 0xf];
 	}
 
-	virtual void resetCMD(uint8_t id)
+	virtual void resetCMD(uint16_t lines)
 	{
-//		for(int i = 0; i < 16; i++)
-//			mcuBank[i]->BSHR = 1 << mcuPin[i];
-		mcuBank[id & 0xf]->BSHR = 1 << mcuPin[id & 0xf];
+		for(int i = 0; i < 16; i++)
+			if(lines & (1 << i))
+				mcuBank[i]->BSHR = 1 << mcuPin[i]; //set pin low
+		//mcuBank[id & 0xf]->BSHR = 1 << mcuPin[id & 0xf];
 	}
 
 	virtual bool getCLK()

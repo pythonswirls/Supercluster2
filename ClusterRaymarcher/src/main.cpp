@@ -57,14 +57,12 @@ bool sendRenderPixelResult(uint8_t id)
 {
 	if(!writeBusVec3(id, pixelColor)) return false;
 	return true;
-}
-
-bool sendPing(uint8_t id)
-{
-	for(int i = 0; i < 160; i++)
-		while(!writeBusByte(i));
-	return true;
 }*/
+
+bool sendPing()
+{
+	return bus.outBuffer.write((uint8_t)BUS_PING);
+}
 
 void busLoop()
 {
@@ -91,19 +89,19 @@ void busLoop()
 				blink();
 				break;
 
-/*			case BUS_RAYMARCHER_INIT:
+			case BUS_RAYMARCHER_INIT:
 				break;
 			case BUS_RAYMARCHER_RENDER_PIXEL:
-				renderPixel(id);
+				//renderPixel(id);
 				break;
 			case BUS_RAYMARCHER_RENDER_PIXEL_RESULT:
-				sendRenderPixelResult(id);
+				//sendRenderPixelResult(id);
 				break;
 			case BUS_PING:
-				sendPing(id);
+				sendPing();
 			default:
 			//nope
-				break;*/
+				break;
 		}
 	}
 }

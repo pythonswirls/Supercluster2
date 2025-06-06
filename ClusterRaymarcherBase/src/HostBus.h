@@ -13,67 +13,87 @@ class HostBus: public Bus
 	{
 	}
 
-	//send a packet. return true is successful, false if failed
-	bool sendPacket(uint8_t id, const uint8_t *data, int size, int timeout = 100)
+	bool waitACK(bool value, uint16_t lines, int timeout)
 	{
-		errorCode = 0;
-		//if(state != STATE_IDLE) return;
-		//if(size == 0) return; //nothing to send
-		resetEOT();	//if didn't wait for ACK
-		////////////////request to client////////////////
-		setType(REQUEST_RECEIVE);
-		setData(id);
-		setCLK();
-		setCMD(id);
-		int wait = timeout * 10;
-		while(!getACK()) 
+		int wait = timeout / 100; //100us per iteration
+		while(getACK() != value) 
 		{
 			Delay_Us(100);
 			wait--;
 			if(wait <= 0) 
 			{
-				resetSignals(id);
-				errorCode = 1; //timeout
+				resetSignals(lines);
 				return false; //timeout
 			}
 		}
-		resetCMD(id);
+		return true; //ACK received
+	}
+
+	bool sendBroadcast(uint16_t lines, const uint8_t *data, int size, int signalDelayMicros = 1000)
+	{
+		errorCode = 0;
+		resetEOT();	//if didn't wait for ACK
+		setType(REQUEST_BROADCAST);
+		setData(255);
+		setCLK();
+		setCMD(lines);
+		Delay_Us(signalDelayMicros);
+		resetCMD(lines);
+		resetType();
+		Delay_Us(signalDelayMicros);
+		resetCLK();
+		for(int i = 0; i < size; i++)
+		{
+			setData(data[i]);
+			if(i == size - 1) 
+				setEOT();
+			setCLK();
+			Delay_Us(signalDelayMicros);
+			resetCLK();
+			Delay_Us(signalDelayMicros);
+		}
+		resetData();
+		resetEOT();
+		return true;
+	}
+
+	enum ErrorCode
+	{
+		ERROR_SUCCESS = 0,
+		ERROR_TIME_OUT_CMD_ACK = 1,
+		ERROR_TIME_OUT_CMD_NACK = 2,
+		ERROR_TIME_OUT_CMD_FULL_NACK = 3,
+		ERROR_TIME_OUT_CMD_FULL = 4,
+		ERROR_TIME_OUT_CLK_ACK = 5,
+		ERROR_TIME_OUT_CLK_NACK = 6,
+		ERROR_TIME_OUT_CLK_FULL_NACK = 7,
+		ERROR_TIME_OUT_CLK_FULL = 8,
+	};
+
+	//send a packet. return true is successful, false if failed
+	ErrorCode sendPacket(uint16_t lines, uint8_t id, const uint8_t *data, int size, int timeout = 100000)
+	{
+		errorCode = 0;
+		resetEOT();	//if didn't wait for ACK
+		////////////////request to client////////////////
+		setType(REQUEST_RECEIVE);
+		setData(id);
+		setCLK();
+		setCMD(lines);
+		if(!waitACK(true, lines, timeout))return ERROR_TIME_OUT_CMD_ACK;
+		resetCMD(lines);
 		resetType();
 		if(getFULL())	
 		{
 			setEOT(); //set end of transmission
 			resetData();
 			resetCLK();
-			wait = timeout * 10;
-			while(getACK())
-			{
-				Delay_Us(100);
-				wait--;
-				if(wait <= 0) 
-				{
-					resetSignals(id);
-					errorCode = 2; //timeout
-					return false; //timeout
-				}
-			}
+			if(!waitACK(false, lines, timeout)) return ERROR_TIME_OUT_CMD_FULL_NACK;
 			resetEOT();
-			//error, buffer is full
-			errorCode = 3; //buffer is full
-			return false;
+			return ERROR_TIME_OUT_CMD_FULL;
 		}
 		resetCLK();
-		wait = timeout * 10;
-		while(getACK())
-		{
-			Delay_Us(100);
-			wait--;
-			if(wait <= 0) 
-			{
-				resetSignals(id);
-				errorCode = 4; //timeout
-				return false; //timeout
-			}
-		}
+		if(!waitACK(false, lines, timeout)) return ERROR_TIME_OUT_CMD_NACK;
 		//state = STATE_TRANSMIT;
 		for(int i = 0; i < size; i++)
 		{
@@ -81,56 +101,21 @@ class HostBus: public Bus
 			if(i == size - 1) 
 				setEOT();
 			setCLK();
-			wait = timeout * 10;
-			while(!getACK())				
-			{
-				Delay_Us(100);
-				wait--;
-				if(wait <= 0) 
-				{
-					resetSignals(id);
-					errorCode = 5; //timeout
-					return false; //timeout
-				}
-			}
+			if(!waitACK(true, lines, timeout)) return ERROR_TIME_OUT_CLK_ACK;
 			if(getFULL() && i < size - 1)	
 			{
 				setEOT(); //set end of transmission
 				resetData();
 				resetCLK();
-				wait = timeout * 10;
-				while(getACK())			
-				{
-					Delay_Us(100);
-					wait--;
-					if(wait <= 0) 
-					{
-						resetSignals(id);
-						errorCode = 6; //timeout
-						return false; //timeout
-					}
-				}
+				if(!waitACK(false, lines, timeout)) return ERROR_TIME_OUT_CLK_FULL_NACK;
 				resetEOT();
-				//error, buffer is full
-				errorCode = 7; //buffer is full
-				return false;
+				return ERROR_TIME_OUT_CLK_FULL;
 			}
 			resetCLK();
-			wait = timeout * 10;
-			while(getACK())			
-			{
-				Delay_Us(100);
-				wait--;
-				if(wait <= 0) 
-				{
-					resetSignals(id);
-					errorCode = 8; //timeout
-					return false; //timeout
-				}
-			}
+			if(!waitACK(false, lines, timeout)) return ERROR_TIME_OUT_CLK_NACK;
 		}
 		resetData();
 		resetEOT();
-		return true;
+		return ERROR_SUCCESS;
 	}
 };

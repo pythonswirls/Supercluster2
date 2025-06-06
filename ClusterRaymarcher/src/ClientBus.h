@@ -26,7 +26,7 @@ class ClientBus: public Bus
 			if(state == STATE_TRANSMIT) disableTransmit();
 			state = STATE_IDLE;
 			//state = STATE_ERROR;
-			return;
+			//return;
 		}
 		switch(type)
 		{
@@ -101,8 +101,8 @@ class ClientBus: public Bus
 		}
 	}
 
-	virtual void setCMD(uint8_t id) {};
-	virtual void resetCMD(uint8_t id) {};
+	virtual void setCMD(uint16_t lines) {};
+	virtual void resetCMD(uint16_t lines) {};
 	virtual void setCLK() {};
 	virtual void resetCLK() {};
 	virtual void resetType() {};
