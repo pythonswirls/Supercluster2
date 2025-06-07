@@ -21,7 +21,7 @@
       cursor: pointer;
     }
     input[type="number"] {
-      width: 60px;
+      width: 40px;
     }
     button:hover {
       background-color: #555;
@@ -82,29 +82,35 @@
   </div>
 
   <div class="control-row">
-    <button id="pingBtn">Ping</button>
+    <label for="idCoord">ID:</label>
+    <input type="number" id="idCoord" value="0" min="0" max="255">
+    <label for="origin">Origin:</label>
+	<span id="origin">
+    <input type="number" id="ox" value="0">
+    <input type="number" id="oy" value="0">
+    <input type="number" id="oz" value="0">
+	</span>
+    <label for="dir">Direction:</label>
+	<span id="dir">
+		<input type="number" id="vx" value="0">
+		<input type="number" id="vy" value="0">
+		<input type="number" id="vz" value="65536">
+	</span>
+    <button id="renderPixelBtn">Render Pixel</button>
+    <button id="renderPixelResultBtn">Fetch Result</button>
   </div>
 
   <div class="control-row">
-    <label for="idCoord">ID:</label>
-    <input type="number" id="idCoord" value="0" min="0" max="255">
-    <label for="ox">OX:</label>
-    <input type="number" id="ox" value="0">
-    <label for="oy">OY:</label>
-    <input type="number" id="oy" value="0">
-    <label for="oz">OZ:</label>
-    <input type="number" id="oz" value="0">
-    <label for="vx">VX:</label>
-    <input type="number" id="vx" value="0">
-    <label for="vy">VY:</label>
-    <input type="number" id="vy" value="0">
-    <label for="vz">VZ:</label>
-    <input type="number" id="vz" value="65536">
-    <button id="renderPixelBtn">Render Pixel</button>
+    <label for="customInput">Hex:</label>
+    <input type="text" id="customInput" placeholder="e.g. f0 00 ff">
+    <button id="sendCustomBtn">Send</button>
+  </div>
+
+  <div class="control-row">
+    <button id="pingBtn">Ping</button>
   </div>
 
   <h3>MCU Status</h3>
-  <div id="mcuStatus"></div>
   <div class="mcu-grid" id="mcuGrid"></div>
 
   <h3>Response Log</h3>
@@ -115,6 +121,7 @@
     const BUS_LED = 0xe0;
     const BUS_PING = 0xf8;
     const BUS_RAYMARCHER_RENDER_PIXEL = 0x41;
+	const BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x42;
 
     let port = null;
     let reader = null;
@@ -180,7 +187,6 @@
     function handleResponse(value) {
       const id = value[1];
       if (id === BUS_PING) {
-        document.getElementById("mcuStatus").textContent = 'MCU Status: ' + [...value].map(b => b.toString(16).padStart(2, '0')).join(' ');
         for (let i = 0; i < mcuBoxes.length; i++) {
           mcuBoxes[i].classList.remove("active");
         }
@@ -196,7 +202,8 @@
 
     async function sendInstruction(instruction, data = []) {
       if (!writer) return;
-      const payload = new Uint8Array([instruction, ...data]);
+      const length = 1 + data.length;
+      const payload = new Uint8Array([length, instruction, ...data]);
       await writer.write(payload);
       log("TX: " + [...payload].map(b => b.toString(16).padStart(2, '0')).join(' '));
     }
@@ -229,6 +236,10 @@
       sendInstruction(BUS_PING);
     });
 
+	document.getElementById("renderPixelResultBtn").addEventListener("click", () => {
+      sendInstruction(BUS_RAYMARCHER_RENDER_PIXEL_RESULT, [])
+	});
+
     document.getElementById("renderPixelBtn").addEventListener("click", () => {
       const id = parseInt(document.getElementById("idCoord").value) || 0;
       const ox = parseInt(document.getElementById("ox").value) || 0;
@@ -242,6 +253,22 @@
       const data = [id, ...encode32(ox), ...encode32(oy), ...encode32(oz), ...encode32(vx), ...encode32(vy), ...encode32(vz)];
 
       sendInstruction(BUS_RAYMARCHER_RENDER_PIXEL, data);
+    });
+
+    document.getElementById("sendCustomBtn").addEventListener("click", () => {
+      const input = document.getElementById("customInput").value.trim();
+      const parts = input.split(/\s+/);
+      const bytes = parts.map(p => parseInt(p, 16)).filter(b => !isNaN(b));
+      if (bytes.length >= 2 && writer) {
+        const [length, instruction, ...rest] = bytes;
+        if (length === bytes.length - 1) {
+          sendInstruction(instruction, rest);
+        } else {
+          log("Invalid length byte for custom input");
+        }
+      } else {
+        log("Invalid hex input");
+      }
     });
 
     window.addEventListener('DOMContentLoaded', async () => {

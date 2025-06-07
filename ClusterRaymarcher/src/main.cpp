@@ -52,11 +52,10 @@ bool renderPixel()
 	if(!readBusVec3(dir)) return false;
 	//blink(1000);	
 	int depth = 2;
+	led(1);
 	pixelColor = renderPixel(pos, dir, depth);
 	writeBusVec3(pixelColor);
-//	if(!bus.outBuffer.write((uint32_t)dir.v[0])) return false;
-	//if(!writeBusVec3(dir)) return false;
-	blink(1000);
+	led(0);
 	return true;
 }
 

@@ -11,6 +11,8 @@ enum MCUState
 constexpr int MAX_MCUS = 160; //255 is broadcast
 //MCUState 
 volatile uint8_t mcuStates[MAX_MCUS];
+volatile uint32_t mcuRenderResult[MAX_MCUS][3];
+volatile uint8_t mcuRenderResultSize[MAX_MCUS];
 
 void pingMCUs()
 {

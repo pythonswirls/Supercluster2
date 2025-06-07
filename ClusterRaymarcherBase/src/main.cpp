@@ -76,6 +76,33 @@ void sendBlink(int addr)
 	}
 }
 
+void pollResults()
+{				
+	for(int i = 0; i < MAX_MCUS; i++)
+	{
+		if(mcuStates[i] == MCU_RAYMARCHING)
+		{
+			int size = 0;
+			if(bus.receivePacket(1 << (i & 0xf), i, 
+				(uint8_t*)(&mcuRenderResult[i][mcuRenderResultSize[i]]), 
+				size, 
+				12 - mcuRenderResultSize[i]) != HostBus::ERROR_SUCCESS)
+				continue;
+			mcuRenderResultSize[i] += size;	
+			if(mcuRenderResultSize[i] >= 12)
+			{
+				ser.writeUint8(14);
+				ser.writeUint8(BUS_RAYMARCHER_RENDER_PIXEL);
+				ser.writeUint8(i);
+				for(int j = 0; j < 12; j++)
+					ser.writeUint8(((uint8_t*)(&mcuRenderResult[i][0]))[j]);
+				ser.flush();			
+			}
+			mcuStates[i] = MCU_IDLE; 
+		}
+	}
+}
+
 int main(void)
 {
 	SetSysClockTo144_HSIfix();
@@ -120,6 +147,11 @@ int main(void)
 				ser.flush();
 				break;
 			}
+			case BUS_RAYMARCHER_RENDER_PIXEL_RESULT:
+			{
+				pollResults();
+				break;
+			}
 			case BUS_RAYMARCHER_RENDER_PIXEL:
 			{
 				static uint8_t id;
@@ -136,24 +168,10 @@ int main(void)
 				*(int32_t*)(&data[21]) = ser.readInt32();
 				if(bus.sendPacket(1 << (id & 0xf), id, data, 25) != HostBus::ERROR_SUCCESS) 
 					break;
-				Delay_Ms(1000);
-				int i = 0;
-				int timeout = 1000;
-				while(i < 12)
-				{
-					Delay_Ms(1);
-					int size = 0;
-					bus.receivePacket(1 << (id & 0xf), id, &data[i], size, 25 - i);
-					i+= size;
-					timeout--;
-					if(timeout <= 0)
-						break;
-				}
-				ser.writeUint8(13);
-				ser.writeUint8(BUS_RAYMARCHER_RENDER_PIXEL);
-				for(int j = 0; j < 12; j++)
-					ser.writeUint8(data[j]);
-				ser.flush();
+				mcuStates[id] = MCU_RAYMARCHING;
+				mcuRenderResultSize[id] = 0;
+				for(int i = 0; i < 3; i++)
+					mcuRenderResult[id][i] = 0;
 				break;
 			}
 			default:
