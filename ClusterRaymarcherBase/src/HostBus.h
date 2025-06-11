@@ -150,6 +150,12 @@ class HostBus: public Bus
 		resetEOT();
 		return ERROR_SUCCESS;
 	}
+	
+	void sendReset(uint16_t lines, uint8_t id)
+	{
+		uint8_t data[] = {BUS_RESET};
+		sendPacket(lines, id, data, 1);
+	}
 
 	void sendReset(uint16_t lines)
 	{

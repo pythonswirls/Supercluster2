@@ -8,7 +8,7 @@
 <body>
 	<button id="connect">Connect Serial</button>
 	<button id="send">Render</button>
-	<canvas id="canvas" width="32" height="18" style="zoom: 4"></canvas>
+	<canvas id="canvas" width="128" height="72" style="zoom: 4"></canvas>
 
 <script>
 
@@ -68,29 +68,46 @@ async function readLoop()
 	}
 }
 
-function bufferIncomingData(newData) {
+async function bufferIncomingData(newData) {
 	// Concatenate existing buffer with new incoming data
 	const combined = new Uint8Array(receiveBuffer.length + newData.length);
 	combined.set(receiveBuffer);
 	combined.set(newData, receiveBuffer.length);
 	receiveBuffer = combined;
 
-	const PACKET_SIZE = 12;
-
-	while (receiveBuffer.length >= PACKET_SIZE + 3) {
-		// Extract a full message
-		const packet = receiveBuffer.slice(2, PACKET_SIZE + 3);
-		receiveData(packet);
-
-		// Remove processed bytes from buffer
-		receiveBuffer = receiveBuffer.slice(PACKET_SIZE + 3);
-	}
+	let processed;
+	const BUS_PACKET_LOST = 0xfe;
+	const BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x42;
+	do{
+		processed = false;
+		if(receiveBuffer.length >= 1 && receiveBuffer.length >= receiveBuffer[0] + 1)
+		{
+			const packet = receiveBuffer.slice(1, receiveBuffer[0] + 1);
+			receiveBuffer = receiveBuffer.slice(receiveBuffer[0] + 1);
+			switch(packet[0])
+			{
+				case BUS_PACKET_LOST:
+					await sendData(workers[packet[1]]); //retry
+					break;
+				case BUS_RAYMARCHER_RENDER_PIXEL_RESULT:
+					if(packet.length < 14) break; //data faulty everything messed up
+					receiveData(packet);
+					break;
+				default:
+			}
+			processed = true;
+		}
+	}while(processed);
 }	
 
 function receiveData(data) {
 	const view = new DataView(data.buffer);
-	const pixel = workers[view.getUint8(0)];
-	pixel.color = veci(view.getUint32(1, true), view.getUint32(5, true), view.getUint32(9, true));
+	const mcu = view.getUint8(1);
+	const pixel = workers[mcu];
+	if(!pixel) 
+		console.log("wrong mcu? " + mcu);
+	else
+		pixel.color = veci(view.getUint32(2, true), view.getUint32(6, true), view.getUint32(10, true));
 	workerDone(pixel);
 }
 
@@ -98,6 +115,7 @@ let lockCount = 0;
 async function sendData(pixel)
 {
 	//12 + 12
+	pixel.time = Date.now();
 	const buffer = new ArrayBuffer(26);
 	const view = new DataView(buffer);
 	view.setUint8(0, 0x41);
@@ -130,6 +148,14 @@ async function fetchData()
 		writer.write(buffer);
 		writer.releaseLock();
 	}, 0);
+	for(let i = 0; i < WORKER_COUNT; i++)
+	{
+		const TIMEOUT = 1000; 
+		if(workers[i] && Date.now() - workers[i].time > TIMEOUT)
+		{
+			await sendData(workers[i]);
+		}
+	}
 }
 
 
@@ -218,8 +244,8 @@ function nextPixel()
 	return pixel;
 }
 
-const WORKER_COUNT = 16; //160; 
-const workers = [];
+const WORKER_COUNT = 4; //160; 
+let workers = [];
 
 async function workerDone(pixel)
 {
@@ -249,13 +275,14 @@ function render(scene) {
     yres = canvas.height;
 	renderx = 0;
 	rendery = 0;
+	workers = new Array(WORKER_COUNT);
 	for(let i = 0; i < WORKER_COUNT; i++)
 	{
 		pixel = nextPixel();
 		if(pixel) 
 		{
 			pixel.id = i;
-			workers.push(pixel);
+			workers[i] = pixel;
 			sendData(pixel);
 		}
 	}

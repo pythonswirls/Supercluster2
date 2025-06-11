@@ -95,18 +95,19 @@ void pollResults()
 				switch(mcuRenderResult[i][0])
 				{
 					case BUS_PACKET_LOST:
+						mcuStates[i] = MCU_IDLE;
+						bus.sendReset(1 << (i & 0xf), i);						
 						ser.writeUint8(2);
 						ser.writeUint8(BUS_PACKET_LOST);
 						ser.writeUint8(i);
 						ser.flush();
-						mcuStates[i] = MCU_IDLE;
 						continue;
 					case BUS_RAYMARCHER_RENDER_PIXEL_RESULT:
 						if(mcuRenderResultSize[i] >= 13)
 						{
 							mcuStates[i] = MCU_IDLE;
 							ser.writeUint8(14);
-							ser.writeUint8(BUS_RAYMARCHER_RENDER_PIXEL);
+							ser.writeUint8(BUS_RAYMARCHER_RENDER_PIXEL_RESULT);
 							ser.writeUint8(i);
 							for(int j = 0; j < 12; j++)
 								ser.writeUint8(mcuRenderResult[i][j + 1]);
@@ -198,12 +199,26 @@ int main(void)
 				*(int32_t*)(&data[17]) = ser.readInt32();
 				*(int32_t*)(&data[21]) = ser.readInt32();
 				if(bus.sendPacket(1 << (id & 0xf), id, data, 25) != HostBus::ERROR_SUCCESS) 
+				{
+					bus.sendReset(1 << (id & 0xf), id);						
+					ser.writeUint8(2);
+					ser.writeUint8(BUS_PACKET_LOST);
+					ser.writeUint8(id);
+					ser.flush();
 					break;
+				}
 				mcuStates[id] = MCU_RAYMARCHING;
 				mcuRenderResultSize[id] = 0;
 				for(int i = 0; i < 3; i++)
 					mcuRenderResult[id][i] = 0;
-				break;
+				break;				
+				/*uint8_t id = prepareRenderPacket();
+				//bus.resetCMD(1 << (id & 0xf));
+				if(bus.sendPacket(1 << (id & 0xf), id, (uint8_t*)mcuRenderStart[id], 25) != HostBus::ERROR_SUCCESS) 
+					break;
+				mcuStates[id] = MCU_RAYMARCHING;
+				mcuRenderResultSize[id] = 0;
+				break;*/
 			}
 			default:
 				break;

@@ -20,10 +20,12 @@
 
 volatile unsigned char USBD_Endp3_Busy = 1;
 // uint16_t USB_Rx_Cnt=0;
-volatile unsigned char rxData[256];
+const uint32_t rxSize = 2048;
+const uint32_t rxSizeMask = rxSize - 1;
+volatile unsigned char rxData[2048];
 
-volatile unsigned char rxDataTail = 0;
-volatile unsigned char rxDataHead = 0;
+volatile uint32_t rxDataTail = 0;
+volatile uint32_t rxDataHead = 0;
 
 unsigned char txData[64];
 volatile char unsigned txCount = 0;
@@ -97,20 +99,20 @@ void USBSerial_write(unsigned char *data, unsigned short len)
   }
 }
 
-unsigned char USBSerial_available()
+uint32_t USBSerial_available()
 {
   // return bytes available to read from buff
-  return (0xff & (rxDataHead - rxDataTail));
+  return (rxSizeMask & (rxDataHead - rxDataTail));
 }
 
-unsigned char USBSerial_read()
+uint8_t USBSerial_read()
 {
   // block if no data is avail?
   while (rxDataTail == rxDataHead)
     ;
 
-  unsigned char ret = 0xff & rxData[rxDataTail];
-  rxDataTail++;
+  uint8_t ret = rxData[rxDataTail];
+  rxDataTail = (rxDataTail + 1) & rxSizeMask;
   return ret;
 }
 
@@ -156,9 +158,9 @@ void EP2_OUT_Callback(void)
   volatile unsigned char len = USB_SIL_Read(ENDP2, tmpdata);
   for (unsigned char i = 0; i < len; i++)
   {
-    rxData[0xff & (rxDataHead + i)] = tmpdata[i];
+    rxData[rxSizeMask & (rxDataHead + i)] = tmpdata[i];
   }
-  rxDataHead += len;
+  rxDataHead = (rxDataHead + len) & rxSizeMask;
   SetEPRxValid(ENDP2);
 }
 /*********************************************************************

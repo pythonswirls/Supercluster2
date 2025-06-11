@@ -119,6 +119,13 @@ void busLoop()
 			case BUS_PING:
 				sendPing();
 				break;
+			case BUS_RESET:
+				bus.resetSignals(0);
+				bus.outBuffer.clear();
+				bus.inBuffer.clear();
+				bus.state = Bus::STATE_IDLE;
+				//blink(500);
+				break;
 			default:
 			//nope
 				break;

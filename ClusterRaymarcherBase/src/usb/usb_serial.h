@@ -13,7 +13,7 @@ extern "C"
 uint8_t USBSerial_config(uint32_t baud, uint8_t stop_bit, uint8_t parity_bit, uint8_t data_bit, uint8_t timeout);
 void USBSerial_begin(); // inits pins and itc
 
-unsigned char USBSerial_available(); // returen bytes in buffer
+uint32_t USBSerial_available(); // returen bytes in buffer
 unsigned char USBSerial_read();      // returns first unread byte from buffer
 
 unsigned char USBSerial_connected(); // check ep0, 1 connected

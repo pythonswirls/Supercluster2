@@ -19,6 +19,7 @@ enum BusInstruction
 	BUS_EXECUTE = 0xf6,
 	BUS_HALT = 0xf7,
 	BUS_PING = 0xf8,
+	BUS_RESET = 0xfd,
 	BUS_PACKET_LOST = 0xfe
 };
 
