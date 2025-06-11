@@ -18,7 +18,7 @@ enum BusInstruction
 	BUS_EXECUTE = 0xf6,
 	BUS_HALT = 0xf7,
 	BUS_PING = 0xf8,
-	BUS_READ = 0xfe
+	BUS_PACKET_LOST = 0xfe
 };
 
 template<int bufferSize = 32>	//needs to be power of two
@@ -96,9 +96,21 @@ class RingBuffer
 		return true;
 	}
 
+	bool peek(uint8_t &data, int offset = 0)
+	{
+		if(size <= offset) return false;
+		data = buffer[(this->pos + offset) & (bufferSize - 1)];
+		return true;
+	}
+
 	int space()
 	{
 		return bufferSize - size;
+	}
+
+	void clear()
+	{
+		size = 0;
 	}
 };
 

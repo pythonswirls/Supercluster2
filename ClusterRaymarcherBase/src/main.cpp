@@ -84,21 +84,39 @@ void pollResults()
 		{
 			int size = 0;
 			if(bus.receivePacket(1 << (i & 0xf), i, 
-				(uint8_t*)(&mcuRenderResult[i][mcuRenderResultSize[i]]), 
+				(uint8_t*)&(mcuRenderResult[i][mcuRenderResultSize[i]]), 
 				size, 
-				12 - mcuRenderResultSize[i]) != HostBus::ERROR_SUCCESS)
+				13 - mcuRenderResultSize[i]) != HostBus::ERROR_SUCCESS)
 				continue;
 			mcuRenderResultSize[i] += size;	
-			if(mcuRenderResultSize[i] >= 12)
+			
+			if(mcuRenderResultSize[i] >= 1)
 			{
-				ser.writeUint8(14);
-				ser.writeUint8(BUS_RAYMARCHER_RENDER_PIXEL);
-				ser.writeUint8(i);
-				for(int j = 0; j < 12; j++)
-					ser.writeUint8(((uint8_t*)(&mcuRenderResult[i][0]))[j]);
-				ser.flush();			
+				switch(mcuRenderResult[i][0])
+				{
+					case BUS_PACKET_LOST:
+						ser.writeUint8(2);
+						ser.writeUint8(BUS_PACKET_LOST);
+						ser.writeUint8(i);
+						ser.flush();
+						mcuStates[i] = MCU_IDLE;
+						continue;
+					case BUS_RAYMARCHER_RENDER_PIXEL_RESULT:
+						if(mcuRenderResultSize[i] >= 13)
+						{
+							mcuStates[i] = MCU_IDLE;
+							ser.writeUint8(14);
+							ser.writeUint8(BUS_RAYMARCHER_RENDER_PIXEL);
+							ser.writeUint8(i);
+							for(int j = 0; j < 12; j++)
+								ser.writeUint8(mcuRenderResult[i][j + 1]);
+							ser.flush();
+							break;
+						}
+					default:
+						break;
+				}
 			}
-			mcuStates[i] = MCU_IDLE; 
 		}
 	}
 }
@@ -124,8 +142,11 @@ int main(void)
 				uint8_t baseIndex = ser.getUint8();
 				for(uint8_t i = 0; i < 16; i++)
 				{
-					uint8_t data[] = {BUS_SET_INDEX, (uint8_t)(baseIndex + i)};
-					bus.sendPacket(1 << i, 255, data, 2);
+					uint8_t data[3];
+					data[0] = BUS_SET_INDEX;
+					data[1] = (uint8_t)(baseIndex + i);
+					data[2] = static_cast<uint8_t>(~data[1]);
+					bus.sendPacket(1 << i, 255, data, 3);
 					//bus.sendBroadcast(1 << i, data, 1);
 					Delay_Ms(1000);
 				}
@@ -135,6 +156,16 @@ int main(void)
 			{
 				uint8_t addr = ser.getUint8();
 				sendBlink(addr);
+				break;
+			}
+			case BUS_LINES_STATE:
+			{
+				uint16_t lines = bus.getCMD();
+				ser.writeUint8(3);
+				ser.writeUint8(BUS_LINES_STATE);
+				ser.writeUint8(lines & 0xff);
+				ser.writeUint8((lines >> 8) & 0xff);
+				ser.flush();
 				break;
 			}
 			case BUS_PING:

@@ -158,6 +158,14 @@ class HostBusCH32V208: public HostBus
 		//mcuBank[id & 0xf]->BSHR = 1 << mcuPin[id & 0xf];
 	}
 
+	virtual uint16_t getCMD()
+	{
+		uint16_t lines = 0;
+		for(int i = 0; i < 16; i++)
+			lines |= ((mcuBank[i]->INDR >> mcuPin[i]) & 1) << i;
+		return lines;
+	}
+
 	virtual bool getCLK()
 	{
 		return (GPIOB->INDR & 0b0000000100000000) == 0; //get PB8

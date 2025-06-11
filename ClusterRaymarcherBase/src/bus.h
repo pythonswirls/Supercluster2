@@ -9,6 +9,7 @@ enum BusInstruction
 	BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x42,
 
 	BUS_LED = 0xe0,
+	BUS_LINES_STATE = 0xe1,
 	BUS_SET_INDEX = 0xf0,
 	BUS_GET_UID = 0xf1,
 	BUS_MODE_IO0 = 0xf2,
@@ -18,7 +19,7 @@ enum BusInstruction
 	BUS_EXECUTE = 0xf6,
 	BUS_HALT = 0xf7,
 	BUS_PING = 0xf8,
-	BUS_READ = 0xfe
+	BUS_PACKET_LOST = 0xfe
 };
 
 template<int bufferSize = 32>	//needs to be power of two
@@ -96,9 +97,21 @@ class RingBuffer
 		return true;
 	}
 
+	bool peek(uint8_t &data, int offset = 0)
+	{
+		if(size <= offset) return false;
+		data = buffer[(this->pos + offset) & (bufferSize - 1)];
+		return true;
+	}
+
 	int space()
 	{
 		return bufferSize - size;
+	}
+
+	void clear()
+	{
+		size = 0;
 	}
 };
 
@@ -128,8 +141,6 @@ class Bus
 		HOST_STATE_END_OF_TRANSMISSION = 1, //last packet data bits
 	};
 
-	RingBuffer<> inBuffer;
-	RingBuffer<> outBuffer;
 	State state;
 	uint8_t id;
 

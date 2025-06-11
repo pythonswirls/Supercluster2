@@ -11,7 +11,7 @@ enum MCUState
 constexpr int MAX_MCUS = 160; //255 is broadcast
 //MCUState 
 volatile uint8_t mcuStates[MAX_MCUS];
-volatile uint32_t mcuRenderResult[MAX_MCUS][3];
+volatile uint8_t mcuRenderResult[MAX_MCUS][13];
 volatile uint8_t mcuRenderResultSize[MAX_MCUS];
 
 void pingMCUs()
@@ -24,6 +24,7 @@ void pingMCUs()
 		uint8_t ping = 0;
 		int size = 0;
 		HostBus::ErrorCode code = bus.receivePacket(1 << (i & 0xf), i, &ping, size, 1, 100000);
+		//mcuStates[i] = code;
 		if(code == HostBus::ERROR_SUCCESS && size == 1 && ping == BUS_PING)
 			mcuStates[i] = MCU_IDLE;
 		else

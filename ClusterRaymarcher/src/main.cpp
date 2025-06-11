@@ -54,6 +54,7 @@ bool renderPixel()
 	int depth = 2;
 	led(1);
 	pixelColor = renderPixel(pos, dir, depth);
+	bus.outBuffer.write((uint8_t)BUS_RAYMARCHER_RENDER_PIXEL_RESULT);
 	writeBusVec3(pixelColor);
 	led(0);
 	return true;
@@ -61,7 +62,19 @@ bool renderPixel()
 
 bool sendPing()
 {
-	return bus.outBuffer.write((uint8_t)BUS_PING);
+	bool ret = bus.outBuffer.write((uint8_t)BUS_PING);
+	blink();
+	return ret;
+}
+
+volatile uint16_t packetsLost = 0;
+volatile uint16_t packetsConfirmed = 0;
+
+void packetLost()
+{
+	packetsLost++;
+	bus.inBuffer.clear();
+	bus.outBuffer.write((uint8_t)BUS_PACKET_LOST);
 }
 
 void busLoop()
@@ -80,7 +93,16 @@ void busLoop()
 		{
 			case BUS_SET_INDEX:
 			{
-				if(!bus.inBuffer.read(id)) break;
+				if(bus.inBuffer.size < 2)
+				{
+					packetLost();
+					continue;
+				}
+				uint8_t newId;
+				bus.inBuffer.read(newId);
+				uint8_t checksum;
+				bus.inBuffer.read(checksum);
+				if(newId != static_cast<uint8_t>(~checksum)) break;
 				setMcuIndex(id);
 				bus.id = id;
 				break;
@@ -92,7 +114,7 @@ void busLoop()
 			case BUS_RAYMARCHER_INIT:
 				break;
 			case BUS_RAYMARCHER_RENDER_PIXEL:
-				renderPixel();
+				if(!renderPixel()) packetLost();
 				break;
 			case BUS_PING:
 				sendPing();

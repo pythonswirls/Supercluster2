@@ -27,6 +27,38 @@ class HostBus: public Bus
 		return true; //ACK received
 	}
 
+	bool waitEOT(bool value, uint16_t lines, int timeout)
+	{
+		int wait = timeout / 100; //100us per iteration
+		while(getEOT() != value) 
+		{
+			Delay_Us(100);
+			wait--;
+			if(wait <= 0) 
+			{
+				resetSignals(lines);
+				return false; //timeout
+			}
+		}
+		return true; //ACK received
+	}
+
+	bool waitDATA(uint8_t value, uint16_t lines, int timeout)
+	{
+		int wait = timeout / 100; //100us per iteration
+		while(getData() != value) 
+		{
+			Delay_Us(100);
+			wait--;
+			if(wait <= 0) 
+			{
+				resetSignals(lines);
+				return false; //timeout
+			}
+		}
+		return true; //ACK received
+	}
+
 	bool sendBroadcast(uint16_t lines, const uint8_t *data, int size, int signalDelayMicros = 1000)
 	{
 		setType(REQUEST_BROADCAST);
@@ -64,6 +96,8 @@ class HostBus: public Bus
 		ERROR_TIME_OUT_CLK_NACK = 6,
 		ERROR_TIME_OUT_CLK_FULL_NACK = 7,
 		ERROR_TIME_OUT_CLK_FULL = 8,
+		ERROR_TIME_OUT_SET_DATA = 9,
+		ERROR_TIME_OUT_SET_EOT = 10,
 	};
 
 	//send a packet. return true is successful, false if failed
@@ -71,6 +105,7 @@ class HostBus: public Bus
 	{
 		setType(REQUEST_RECEIVE);
 		setData(id);
+		if(!waitDATA(id, lines, timeout))return ERROR_TIME_OUT_SET_DATA;
 		setCLK();
 		setCMD(lines);
 		if(!waitACK(true, lines, timeout))return ERROR_TIME_OUT_CMD_ACK;
@@ -91,8 +126,12 @@ class HostBus: public Bus
 		for(int i = 0; i < size; i++)
 		{
 			setData(data[i]);
-			if(i == size - 1) 
+			if(!waitDATA(data[i], lines, timeout))return ERROR_TIME_OUT_SET_DATA;
+			if(i == size - 1)
+			{ 
 				setEOT();
+				if(!waitEOT(true, lines, timeout)) return ERROR_TIME_OUT_SET_EOT;
+			}
 			setCLK();
 			if(!waitACK(true, lines, timeout)) return ERROR_TIME_OUT_CLK_ACK;
 			if(getFULL() && i < size - 1)	

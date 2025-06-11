@@ -6,6 +6,9 @@
 class ClientBus: public Bus
 {
 	public:
+	RingBuffer<> inBuffer;
+	RingBuffer<> outBuffer;
+
 	ClientBus()
 		:Bus()
 	{
