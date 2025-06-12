@@ -74,7 +74,7 @@ void packetLost()
 {
 	packetsLost++;
 	bus.inBuffer.clear();
-	bus.outBuffer.write((uint8_t)BUS_PACKET_LOST);
+	bus.outBuffer.write((uint8_t)BUS_CLIENT_ERROR);
 }
 
 void busLoop()
@@ -91,7 +91,7 @@ void busLoop()
 		bus.inBuffer.read(cmd);
 		switch(cmd)
 		{
-			case BUS_SET_INDEX:
+			case BUS_CLIENT_SET_INDEX:
 			{
 				if(bus.inBuffer.size < 2)
 				{
@@ -119,7 +119,7 @@ void busLoop()
 			case BUS_PING:
 				sendPing();
 				break;
-			case BUS_RESET:
+			case BUS_CLIENT_RESET:
 				bus.resetSignals(0);
 				bus.outBuffer.clear();
 				bus.inBuffer.clear();

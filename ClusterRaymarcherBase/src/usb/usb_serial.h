@@ -47,7 +47,7 @@ public:
             ;
     }
 
-    inline uint8_t available(void)
+    inline size_t available(void)
     {
         return USBSerial_available();
     }

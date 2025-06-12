@@ -59,32 +59,6 @@ class HostBus: public Bus
 		return true; //ACK received
 	}
 
-	bool sendBroadcast(uint16_t lines, const uint8_t *data, int size, int signalDelayMicros = 1000)
-	{
-		setType(REQUEST_BROADCAST);
-		setData(255);
-		setCLK();
-		setCMD(lines);
-		Delay_Us(signalDelayMicros);
-		resetCMD(lines);
-		resetType();
-		Delay_Us(signalDelayMicros);
-		resetCLK();
-		for(int i = 0; i < size; i++)
-		{
-			setData(data[i]);
-			if(i == size - 1) 
-				setEOT();
-			setCLK();
-			Delay_Us(signalDelayMicros);
-			resetCLK();
-			Delay_Us(signalDelayMicros);
-		}
-		resetData();
-		resetEOT();
-		return true;
-	}
-
 	enum ErrorCode
 	{
 		ERROR_SUCCESS = 0,
@@ -99,6 +73,37 @@ class HostBus: public Bus
 		ERROR_TIME_OUT_SET_DATA = 9,
 		ERROR_TIME_OUT_SET_EOT = 10,
 	};
+
+	ErrorCode sendBroadcast(uint16_t lines, const uint8_t *data, int size, int signalDelayMicros = 1000, int timeout = 100000)
+	{
+		setType(REQUEST_BROADCAST);
+		setData(0xff);
+		if(!waitDATA(0xff, lines, timeout))return ERROR_TIME_OUT_SET_DATA;		
+		setCLK();
+		setCMD(lines);
+		Delay_Us(signalDelayMicros);
+		resetCMD(lines);
+		resetType();
+		Delay_Us(signalDelayMicros);
+		resetCLK();
+		for(int i = 0; i < size; i++)
+		{
+			setData(data[i]);
+			if(!waitDATA(data[i], lines, timeout))return ERROR_TIME_OUT_SET_DATA;
+			if(i == size - 1) 
+			{
+				setEOT();
+				if(!waitEOT(true, lines, timeout)) return ERROR_TIME_OUT_SET_EOT;
+			}
+			setCLK();
+			Delay_Us(signalDelayMicros);
+			resetCLK();
+			Delay_Us(signalDelayMicros);
+		}
+		resetData();
+		resetEOT();
+		return ERROR_SUCCESS;
+	}
 
 	//send a packet. return true is successful, false if failed
 	ErrorCode sendPacket(uint16_t lines, uint8_t id, const uint8_t *data, int size, int timeout = 100000)
@@ -150,10 +155,10 @@ class HostBus: public Bus
 		resetEOT();
 		return ERROR_SUCCESS;
 	}
-	
+
 	void sendReset(uint16_t lines, uint8_t id)
 	{
-		uint8_t data[] = {BUS_RESET};
+		uint8_t data[] = {BUS_CLIENT_RESET};
 		sendPacket(lines, id, data, 1);
 	}
 
@@ -172,6 +177,7 @@ class HostBus: public Bus
 	{
 		setType(REQUEST_TRANSMIT);
 		setData(id);
+		if(!waitDATA(id, lines, timeout))return ERROR_TIME_OUT_SET_DATA;
 		setCLK();
 		setCMD(lines);
 		if(!waitACK(true, lines, timeout)) return ERROR_TIME_OUT_CMD_ACK;

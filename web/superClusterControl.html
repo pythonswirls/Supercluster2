@@ -1,294 +1,371 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>WebSerial MCU Controller</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-      background-color: #121212;
-      color: #eee;
-    }
-    button, input[type="number"] {
-      margin: 5px;
-      padding: 8px 12px;
-      font-size: 14px;
-      border: 1px solid #444;
-      border-radius: 4px;
-      background-color: #333;
-      color: #eee;
-      cursor: pointer;
-    }
-    input[type="number"] {
-      width: 40px;
-    }
-    button:hover {
-      background-color: #555;
-    }
-    .status {
-      font-weight: bold;
-      color: lightgreen;
-      margin-left: 10px;
-    }
-    #log {
-      white-space: pre;
-      border: 1px solid #444;
-      background-color: #1e1e1e;
-      color: #ccc;
-      padding: 10px;
-      max-height: 200px;
-      overflow-y: scroll;
-      margin-top: 20px;
-    }
-    .control-row {
-      display: flex;
-      align-items: center;
-      margin: 10px 0;
-      gap: 10px;
-    }
-    .mcu-grid {
-      display: grid;
-      grid-template-columns: repeat(16, 10px);
-      grid-gap: 2px;
-      margin: 10px 0;
-    }
-    .mcu-box {
-      width: 10px;
-      height: 10px;
-      background-color: gray;
-    }
-    .mcu-box.active {
-      background-color: lime;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>WebSerial MCU Controller</title>
+<style>
+	body {
+	font-family: sans-serif;
+	padding: 20px;
+	background-color: #121212;
+	color: #eee;
+	}
+	button, input[type="number"] {
+	margin: 5px;
+	padding: 8px 12px;
+	font-size: 14px;
+	border: 1px solid #444;
+	border-radius: 4px;
+	background-color: #333;
+	color: #eee;
+	cursor: pointer;
+	}
+	input[type="number"] {
+	width: 40px;
+	}
+	button:hover {
+	background-color: #555;
+	}
+	.status {
+	font-weight: bold;
+	color: lightgreen;
+	margin-left: 10px;
+	}
+	#log {
+	white-space: pre;
+	border: 1px solid #444;
+	background-color: #1e1e1e;
+	color: #ccc;
+	padding: 10px;
+	max-height: 200px;
+	overflow-y: scroll;
+	margin-top: 20px;
+	}
+	.control-row {
+	display: flex;
+	align-items: center;
+	margin: 10px 0;
+	gap: 10px;
+	}
+	.mcu-grid {
+	display: grid;
+	grid-template-columns: repeat(16, 10px);
+	grid-gap: 2px;
+	margin: 10px 0;
+	}
+	.mcu-box {
+	width: 10px;
+	height: 10px;
+	background-color: gray;
+	}
+	.mcu-box.active {
+	background-color: lime;
+	}
+</style>
 </head>
 <body>
-  <h1>MCU Control App</h1>
+<h1>MCU Control App</h1>
 
-  <button id="connectBtn">Connect</button>
-  <span id="status" class="status">Disconnected</span>
+<button id="connectBtn">Connect</button>
+<span id="status" class="status">Disconnected</span>
 
-  <div class="control-row">
-    <button id="setIndexBtn">Set Index</button>
-    <input type="range" id="indexSlider" min="0" max="240" step="16" value="0">
-    <span id="indexValue">0</span>
-  </div>
+<div class="control-row">
+	<button id="setIndexBtn">Set Index</button>
+	<input type="range" id="indexSlider" min="0" max="240" step="16" value="0">
+	<span id="indexValue">0</span>
+</div>
 
-  <div class="control-row">
-    <label for="ledIndex">LED Index:</label>
-    <input type="number" id="ledIndex" value="255" min="0" max="255">
-    <button id="ledBtn">Toggle LED</button>
-  </div>
+<div class="control-row">
+	<label for="ledIndex">LED Index:</label>
+	<input type="number" id="ledIndex" value="255" min="0" max="255">
+	<button id="ledBtn">Toggle LED</button>
+</div>
 
-  <div class="control-row">
-    <label for="idCoord">ID:</label>
-    <input type="number" id="idCoord" value="0" min="0" max="255">
-    <label for="origin">Origin:</label>
+<div class="control-row">
+	<label for="idCoord">ID:</label>
+	<input type="number" id="idCoord" value="0" min="0" max="255">
+	<label for="origin">Origin:</label>
 	<span id="origin">
-    <input type="number" id="ox" value="0">
-    <input type="number" id="oy" value="0">
-    <input type="number" id="oz" value="0">
+	<input type="number" id="ox" value="0">
+	<input type="number" id="oy" value="0">
+	<input type="number" id="oz" value="0">
 	</span>
-    <label for="dir">Direction:</label>
+	<label for="dir">Direction:</label>
 	<span id="dir">
 		<input type="number" id="vx" value="0">
 		<input type="number" id="vy" value="0">
 		<input type="number" id="vz" value="65536">
 	</span>
-    <button id="renderPixelBtn">Render Pixel</button>
-    <button id="renderPixelResultBtn">Fetch Result</button>
-  </div>
+	<button id="renderPixelBtn">Render Pixel</button>
+	<button id="renderPixelResultBtn">Fetch Result</button>
+</div>
 
-  <div class="control-row">
-    <label for="customInput">Hex:</label>
-    <input type="text" id="customInput" placeholder="e.g. f0 00 ff">
-    <button id="sendCustomBtn">Send</button>
-  </div>
+<div class="control-row">
+	<label for="customInput">Hex:</label>
+	<input type="text" id="customInput" placeholder="e.g. f0 00 ff">
+	<button id="sendCustomBtn">Send</button>
+</div>
 
-  <div class="control-row">
-    <button id="pingBtn">Ping</button>
-  </div>
+<div class="control-row">
+	<button id="pingBtn">Ping</button>
+</div>
 
-  <h3>MCU Status</h3>
-  <div class="mcu-grid" id="mcuGrid"></div>
+<h3>MCU Status</h3>
+<div class="mcu-grid" id="mcuGrid"></div>
 
-  <h3>Response Log</h3>
-  <div id="log"></div>
+<h3>Response Log</h3>
+<div id="log"></div>
 
-  <script>
-    const BUS_SET_INDEX = 0xf0;
-    const BUS_LED = 0xe0;
-    const BUS_PING = 0xf8;
-    const BUS_RAYMARCHER_RENDER_PIXEL = 0x41;
-	const BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x42;
+<script>
+	const BUS_RAYMARCHER_INIT = 0x10;
+	const BUS_RAYMARCHER_RENDER_PIXEL = 0x11;
+	const BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x12;
 
-    let port = null;
-    let reader = null;
-    let writer = null;
-    let readBuffer = [];
+	const BUS_LED = 0xd0;
+	const BUS_PING = 0xd1;
+	
+	const BUS_CLIENT_RESET = 0xe0;	//reset client
+	const BUS_CLIENT_SET_INDEX = 0xe4;
+	const BUS_CLIENT_ERROR = 0xe5;	//error in client
 
-    const mcuGrid = document.getElementById("mcuGrid");
-    const mcuBoxes = [];
-    for (let i = 0; i < 160; i++) {
-      const div = document.createElement("div");
-      div.className = "mcu-box";
-      mcuGrid.appendChild(div);
-      mcuBoxes.push(div);
-    }
+	const BUS_HOST_RESET = 0xf0;
+	const BUS_HOST_FORWARD = 0xf1;	//forward packet to client
+	const BUS_HOST_BROADCAST = 0xf2;	//broadcast packet to flagged clients
+	const BUS_HOST_FETCH = 0xf3;	//fetch data from client
+	const BUS_HOST_LINES_STATE = 0xf4;
+	const BUS_HOST_ERROR = 0xf5;
+	const BUS_HOST_SUCCESS = 0xf6;
 
-    async function connectSerial() {
-      try {
-        port = await navigator.serial.requestPort();
-        await port.open({ baudRate: 115200 });
+	let port = null;
+	let reader = null;
+	let writer = null;
+	let readBuffer = [];
 
-        writer = port.writable.getWriter();
-        reader = port.readable.getReader();
+	const mcuGrid = document.getElementById("mcuGrid");
+	const mcuBoxes = [];
+	for (let i = 0; i < 160; i++) 
+	{
+		const div = document.createElement("div");
+		div.className = "mcu-box";
+		mcuGrid.appendChild(div);
+		mcuBoxes.push(div);
+	}
 
-        document.getElementById("status").textContent = "Connected";
-        document.getElementById("status").style.color = "lightgreen";
+	async function connectSerial() 
+	{
+		try {
+			port = await navigator.serial.requestPort();
+			await port.open({ baudRate: 115200 });
 
-        readLoop();
-      } catch (err) {
-        console.error("Connection error:", err);
-        document.getElementById("status").textContent = "Disconnected";
-        document.getElementById("status").style.color = "red";
-      }
-    }
+			writer = port.writable.getWriter();
+			reader = port.readable.getReader();
 
-    async function readLoop() {
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (value) {
-            readBuffer.push(...value);
-            processBufferedData();
-          }
-        }
-      } catch (err) {
-        console.error('Read error:', err);
-      }
-    }
+			document.getElementById("status").textContent = "Connected";
+			document.getElementById("status").style.color = "lightgreen";
 
-    function processBufferedData() {
-      while (readBuffer.length >= 2) {
-        const length = readBuffer[0];
-        if (readBuffer.length >= length + 1) {
-          const packet = readBuffer.slice(0, length + 1);
-          readBuffer = readBuffer.slice(length + 1);
-          handleResponse(new Uint8Array(packet));
-        } else {
-          break;
-        }
-      }
-    }
+			readLoop();
+		} catch (err) {
+			console.error("Connection error:", err);
+			document.getElementById("status").textContent = "Disconnected";
+			document.getElementById("status").style.color = "red";
+		}
+	}
 
-    function handleResponse(value) {
-      const id = value[1];
-      if (id === BUS_PING) {
-        for (let i = 0; i < mcuBoxes.length; i++) {
-          mcuBoxes[i].classList.remove("active");
-        }
-        for (let i = 2; i < value.length && i - 2 < mcuBoxes.length; i++) {
-          if (value[i]) {
-            mcuBoxes[i - 2].classList.add("active");
-          }
-        }
-      }
-      const hex = [...value].map(b => b.toString(16).padStart(2, '0')).join(' ');
-      log("RX: " + hex);
-    }
+	async function readLoop() 
+	{
+		try {
+			while (true) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			if (value) {
+				readBuffer.push(...value);
+				processBufferedData();
+			}
+			}
+		} catch (err) {
+			console.error('Read error:', err);
+		}
+	}
 
-    async function sendInstruction(instruction, data = []) {
-      if (!writer) return;
-      const length = 1 + data.length;
-      const payload = new Uint8Array([instruction, ...data]);
-      await writer.write(payload);
-      log("TX: " + [...payload].map(b => b.toString(16).padStart(2, '0')).join(' '));
-    }
+	function processBufferedData() 
+	{
+		while (readBuffer.length >= 2) 
+		{
+			const length = readBuffer[0];
+			if (readBuffer.length >= length + 1) 
+			{
+				const packet = readBuffer.slice(0, length + 1);
+				readBuffer = readBuffer.slice(length + 1);
+				handleHostResponse(new Uint8Array(packet));
+			} 
+			else
+			{
+				break;
+			}
+		}
+	}
 
-    function log(text) {
-      const logEl = document.getElementById("log");
-      logEl.textContent += text + "\n";
-      logEl.scrollTop = logEl.scrollHeight;
-    }
+	function handleHostResponse(packet) 
+	{
+		const instruction = packet[1];
+		switch (instruction) 
+		{
+			case BUS_HOST_FETCH:
+			{
+				const mcu = packet[2];
+				handleClientResponse(mcu, packet.slice(3));
+				break;
+			}
+			default:
+				console.log("Unknown host packet:");
+				console.log(...packet);
+				break;
+		}
+		const hex = [...packet].map(b => b.toString(16).padStart(2, '0')).join(' ');
+		log("RX: " + hex);
+	}
 
-    document.getElementById("connectBtn").addEventListener("click", connectSerial);
+	function handleClientResponse(mcu, packet)
+	{
+		const instruction = packet[0];
+		switch (instruction) 
+		{
+			case BUS_PING:
+			{
+				mcuBoxes[mcu].classList.add("active");
+				break;
+			}
+			default:
+				console.log("Unknown client packet:");
+				console.log(...packet);
+				break;
+		}
+	}
 
-    const slider = document.getElementById("indexSlider");
-    const indexValue = document.getElementById("indexValue");
-    slider.addEventListener("input", () => {
-      indexValue.textContent = slider.value;
-    });
 
-    document.getElementById("setIndexBtn").addEventListener("click", () => {
-      const index = parseInt(slider.value);
-      sendInstruction(BUS_SET_INDEX, [index]);
-    });
+	async function sendHostInstruction(instruction, data = []) 
+	{
+		if (!writer) return;
+		const length = 1 + data.length;
+		const payload = new Uint8Array([length, instruction, ...data]);
+		await writer.write(payload);
+		log("TX: " + [...payload].map(b => b.toString(16).padStart(2, '0')).join(' '));
+	}
 
-    document.getElementById("ledBtn").addEventListener("click", () => {
-      const ledIndex = parseInt(document.getElementById("ledIndex").value) || 0;
-      sendInstruction(BUS_LED, [ledIndex]);
-    });
+	async function sendBroadcastInstruction(lines, instruction, data = []) 
+	{
+		const payload = new Uint8Array([lines & 0xff, (lines >> 8) & 0xff, instruction, ...data]);
+		sendHostInstruction(BUS_HOST_BROADCAST, payload);
+	}
 
-    document.getElementById("pingBtn").addEventListener("click", () => {
-      sendInstruction(BUS_PING);
-    });
+	async function sendClientInstruction(mcu, instruction, data = []) 
+	{
+		const payload = new Uint8Array([mcu, instruction, ...data]);
+		sendHostInstruction(BUS_HOST_FORWARD, payload);
+	}
 
-	document.getElementById("renderPixelResultBtn").addEventListener("click", () => {
-      sendInstruction(BUS_RAYMARCHER_RENDER_PIXEL_RESULT, [])
+	function log(text) 
+	{
+		const logEl = document.getElementById("log");
+		logEl.textContent += text + "\n";
+		logEl.scrollTop = logEl.scrollHeight;
+	}
+
+	document.getElementById("connectBtn").addEventListener("click", connectSerial);
+
+	const slider = document.getElementById("indexSlider");
+	const indexValue = document.getElementById("indexValue");
+
+	slider.addEventListener("input", () => 
+	{
+		indexValue.textContent = slider.value;
 	});
 
-    document.getElementById("renderPixelBtn").addEventListener("click", () => {
-      const id = parseInt(document.getElementById("idCoord").value) || 0;
-      const ox = parseInt(document.getElementById("ox").value) || 0;
-      const oy = parseInt(document.getElementById("oy").value) || 0;
-      const oz = parseInt(document.getElementById("oz").value) || 0;
-      const vx = parseInt(document.getElementById("vx").value) || 0;
-      const vy = parseInt(document.getElementById("vy").value) || 0;
-      const vz = parseInt(document.getElementById("vz").value) || 0;
+	document.getElementById("setIndexBtn").addEventListener("click", () => 
+	{
+		const baseIndex = parseInt(slider.value);
+		for(let i = 0; i < 16; i++)
+		{
+			const index = baseIndex + i;
+			sendBroadcastInstruction(1 << i, BUS_CLIENT_SET_INDEX, [index, (~index) & 0xff]);
+		}
+	});
 
-      const encode32 = val => [val & 0xFF, (val >> 8) & 0xFF, (val >> 16) & 0xFF, (val >> 24) & 0xFF];
-      const data = [id, ...encode32(ox), ...encode32(oy), ...encode32(oz), ...encode32(vx), ...encode32(vy), ...encode32(vz)];
+	document.getElementById("ledBtn").addEventListener("click", () => 
+	{
+		const mcu = parseInt(document.getElementById("ledIndex").value) || 0;
+		if(mcu == 255)
+			sendBroadcastInstruction(0xffff, BUS_LED);
+		else
+			sendClientInstruction(mcu, BUS_LED);
+	});
 
-      sendInstruction(BUS_RAYMARCHER_RENDER_PIXEL, data);
-    });
+	document.getElementById("pingBtn").addEventListener("click", () => 
+	{
+		for(let i = 0; i < 160; i++)
+		{
+			mcuBoxes[i].classList.remove("active");
+			sendClientInstruction(i, BUS_PING);
+		}
+	});
 
-    document.getElementById("sendCustomBtn").addEventListener("click", () => {
-      const input = document.getElementById("customInput").value.trim();
-      const parts = input.split(/\s+/);
-      const bytes = parts.map(p => parseInt(p, 16)).filter(b => !isNaN(b));
-      if (bytes.length >= 1 && writer) {
-        const [instruction, ...rest] = bytes;
-        if (length === bytes.length - 1) {
-          sendInstruction(instruction, rest);
-        } else {
-          log("Invalid length byte for custom input");
-        }
-      } else {
-        log("Invalid hex input");
-      }
-    });
+	document.getElementById("renderPixelResultBtn").addEventListener("click", () => 
+	{
+		const id = parseInt(document.getElementById("idCoord").value) || 0;
+		sendClientInstruction(id, BUS_RAYMARCHER_RENDER_PIXEL_RESULT, []);
+	});
 
-    window.addEventListener('DOMContentLoaded', async () => {
-      if ('serial' in navigator) {
-        const ports = await navigator.serial.getPorts();
-        if (ports.length > 0) {
-          try {
-            port = ports[0];
-            await port.open({ baudRate: 115200 });
-            writer = port.writable.getWriter();
-            reader = port.readable.getReader();
-            document.getElementById("status").textContent = "Connected";
-            document.getElementById("status").style.color = "lightgreen";
-            readLoop();
-          } catch (err) {
-            console.error("Auto-connect error:", err);
-          }
-        }
-      }
-    });
-  </script>
+	document.getElementById("renderPixelBtn").addEventListener("click", () => 
+	{
+		const id = parseInt(document.getElementById("idCoord").value) || 0;
+		const ox = parseInt(document.getElementById("ox").value) || 0;
+		const oy = parseInt(document.getElementById("oy").value) || 0;
+		const oz = parseInt(document.getElementById("oz").value) || 0;
+		const vx = parseInt(document.getElementById("vx").value) || 0;
+		const vy = parseInt(document.getElementById("vy").value) || 0;
+		const vz = parseInt(document.getElementById("vz").value) || 0;
+
+		const encode32 = val => [val & 0xFF, (val >> 8) & 0xFF, (val >> 16) & 0xFF, (val >> 24) & 0xFF];
+		const data = [...encode32(ox), ...encode32(oy), ...encode32(oz), ...encode32(vx), ...encode32(vy), ...encode32(vz)];
+
+		sendClientInstruction(id, BUS_RAYMARCHER_RENDER_PIXEL, data);
+	});
+
+	document.getElementById("sendCustomBtn").addEventListener("click", () => 
+	{
+		const input = document.getElementById("customInput").value.trim();
+		const parts = input.split(/\s+/);
+		const bytes = parts.map(p => parseInt(p, 16)).filter(b => !isNaN(b));
+		if (bytes.length >= 1 && writer) {
+			const [instruction, ...rest] = bytes;
+			sendHostInstruction(instruction, rest);
+		} else {
+			log("Invalid hex input");
+		}
+	});
+
+	window.addEventListener('DOMContentLoaded', async () => {
+		if ('serial' in navigator) 
+		{
+			const ports = await navigator.serial.getPorts();
+			if (ports.length > 0) 
+			{
+				try 
+				{
+					port = ports[0];
+					await port.open({ baudRate: 115200 });
+					writer = port.writable.getWriter();
+					reader = port.readable.getReader();
+					document.getElementById("status").textContent = "Connected";
+					document.getElementById("status").style.color = "lightgreen";
+					readLoop();
+				} catch (err) 
+				{
+					console.error("Auto-connect error:", err);
+				}
+			}
+		}
+	});
+</script>
 </body>
 </html>

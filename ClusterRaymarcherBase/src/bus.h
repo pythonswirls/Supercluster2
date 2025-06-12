@@ -4,23 +4,19 @@
 
 enum BusInstruction
 {
-	BUS_RAYMARCHER_INIT = 0x40,
-	BUS_RAYMARCHER_RENDER_PIXEL = 0x41,
-	BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x42,
+	BUS_LED = 0xd0,
+	BUS_PING = 0xd1,
+	
+	BUS_CLIENT_RESET = 0xe0,	//reset client
+	BUS_CLIENT_SET_INDEX = 0xe4,
 
-	BUS_LED = 0xe0,
-	BUS_LINES_STATE = 0xe1,
-	BUS_SET_INDEX = 0xf0,
-	BUS_GET_UID = 0xf1,
-	BUS_MODE_IO0 = 0xf2,
-	BUS_MODE_IO1 = 0xf3,
-	BUS_WRITE_FLASH = 0xf4,
-	BUS_JUMP_TO_FLASH = 0xf5,
-	BUS_EXECUTE = 0xf6,
-	BUS_HALT = 0xf7,
-	BUS_PING = 0xf8,
-	BUS_RESET = 0xfd,
-	BUS_PACKET_LOST = 0xfe
+	BUS_HOST_RESET = 0xf0,
+	BUS_HOST_FORWARD = 0xf1,	//forward packet to client
+	BUS_HOST_BROADCAST = 0xf2,	//broadcast packet to flagged clients
+	BUS_HOST_FETCH = 0xf3,	//fetch data from client
+	BUS_HOST_LINES_STATE = 0xf4,
+	BUS_HOST_ERROR = 0xf5,
+	BUS_HOST_SUCCESS = 0xf6,
 };
 
 template<int bufferSize = 32>	//needs to be power of two

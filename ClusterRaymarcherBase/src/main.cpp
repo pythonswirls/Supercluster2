@@ -7,120 +7,10 @@ constexpr bool BOARD_TYPE_BASE = false;
 #include <debug.h>
 #include "gpio.h"
 #include "HostBusCH32V208.h"
-#include "mcu.h"
-
-
 USBSerial Serial;
-
-class Serializer
-{
-public:
-	Serializer()
-	{
-//		Serial.begin(115200);
-	}
-
-	uint8_t getUint8()
-	{
-		return Serial.read();
-	}
-
-	int32_t readInt32()
-	{
-		uint8_t buffer[4];
-		buffer[0] = Serial.read();
-		buffer[1] = Serial.read();
-		buffer[2] = Serial.read();
-		buffer[3] = Serial.read();
-		return *(int32_t*)buffer;
-	}
-
-	void writeUint8(uint8_t value)
-	{
-		Serial.write(value);
-	}
-
-	void writeInt32(int32_t value)
-	{
-		uint8_t buffer[4];
-		buffer[0] = value & 0xFF;
-		buffer[1] = (value >> 8) & 0xFF;
-		buffer[2] = (value >> 16) & 0xFF;
-		buffer[3] = (value >> 24) & 0xFF;
-		Serial.write(buffer, sizeof(buffer));
-	}
-
-	void flush()
-	{
-		Serial.flush();
-	}
-};
-
-Serializer ser;
 
 /// old programmer //////////////////////////////////////
 
-void sendBlink(int addr)
-{
-	const uint8_t data[] = {BUS_LED};
-	
-	if(addr == 255)
-		bus.sendBroadcast(0xffff, data, 1);
-	else
-	{
-		HostBus::ErrorCode code = bus.sendPacket(1 << (addr & 15), addr, data, 1);
-	//	Delay_Ms(100);
-		ser.writeUint8(1);
-		ser.writeUint8((int8_t)code);
-		ser.flush();
-	}
-}
-
-void pollResults()
-{				
-	for(int i = 0; i < MAX_MCUS; i++)
-	{
-		if(mcuStates[i] == MCU_RAYMARCHING)
-		{
-			int size = 0;
-			if(bus.receivePacket(1 << (i & 0xf), i, 
-				(uint8_t*)&(mcuRenderResult[i][mcuRenderResultSize[i]]), 
-				size, 
-				13 - mcuRenderResultSize[i]) != HostBus::ERROR_SUCCESS)
-				continue;
-			mcuRenderResultSize[i] += size;	
-			
-			if(mcuRenderResultSize[i] >= 1)
-			{
-				switch(mcuRenderResult[i][0])
-				{
-					case BUS_PACKET_LOST:
-						mcuStates[i] = MCU_IDLE;
-						bus.sendReset(1 << (i & 0xf), i);						
-						ser.writeUint8(2);
-						ser.writeUint8(BUS_PACKET_LOST);
-						ser.writeUint8(i);
-						ser.flush();
-						continue;
-					case BUS_RAYMARCHER_RENDER_PIXEL_RESULT:
-						if(mcuRenderResultSize[i] >= 13)
-						{
-							mcuStates[i] = MCU_IDLE;
-							ser.writeUint8(14);
-							ser.writeUint8(BUS_RAYMARCHER_RENDER_PIXEL_RESULT);
-							ser.writeUint8(i);
-							for(int j = 0; j < 12; j++)
-								ser.writeUint8(mcuRenderResult[i][j + 1]);
-							ser.flush();
-							break;
-						}
-					default:
-						break;
-				}
-			}
-		}
-	}
-}
 
 int main(void)
 {
@@ -132,96 +22,110 @@ int main(void)
 	initGpio();
 	bus.init();
 	Delay_Ms(6000);
-	initMCUs();
 
     while(1)
     {
-		switch(ser.getUint8())
+		while(Serial.available() < 1);	//(length, [instruction,] [target,] [data..])
+		uint8_t packetLength = Serial.read();
+		if(!packetLength) continue;	//empty packet?
+		while(Serial.available() < packetLength); //wait until data is complete
+		uint8_t packet[35];
+		for(int i = 0; i < packetLength; i++)
+			packet[i] = Serial.read(); //read data
+		uint8_t instruction = packet[0];
+		switch(instruction)	
 		{
-			case BUS_SET_INDEX:
+			case BUS_HOST_RESET:
 			{
-				uint8_t baseIndex = ser.getUint8();
-				for(uint8_t i = 0; i < 16; i++)
+				bus.resetSignals(0xffff); //reset all lines
+				uint8_t data[2];
+				data[0] = 1;
+				data[1] = BUS_HOST_RESET;
+				Serial.write(data, 2); //send data
+				Serial.flush();
+				break;
+			}
+			case BUS_HOST_FORWARD:
+			{
+				uint8_t mcu = packet[1];
+				int size = 0;
+				HostBus::ErrorCode err = bus.sendPacket(1 << (mcu & 0xf), mcu, &(packet[2]), packetLength - 2);
+				uint8_t data[5];
+				if(err != HostBus::ERROR_SUCCESS)
 				{
-					uint8_t data[3];
-					data[0] = BUS_SET_INDEX;
-					data[1] = (uint8_t)(baseIndex + i);
-					data[2] = static_cast<uint8_t>(~data[1]);
-					bus.sendPacket(1 << i, 255, data, 3);
-					//bus.sendBroadcast(1 << i, data, 1);
-					Delay_Ms(1000);
+					data[0] = 4;
+					data[1] = BUS_HOST_ERROR;
+					data[2] = (uint8_t)err;
+					data[3] = mcu;
+					data[4] = (uint8_t)size;
+					Serial.write(data, 5); //send error packet
+					Serial.flush();
+					break;
 				}
+				data[0] = 3;
+				data[1] = BUS_HOST_FORWARD;
+				data[2] = mcu;
+				data[3] = (uint8_t)size;
+				Serial.write(data, 4); //send data
+				Serial.flush();
 				break;
 			}
-			case BUS_LED:
+			case BUS_HOST_BROADCAST:
 			{
-				uint8_t addr = ser.getUint8();
-				sendBlink(addr);
+				uint16_t lines = *(uint16_t*)&(packet[1]);
+				//uint8_t led = BUS_LED;
+//				HostBus::ErrorCode err = bus.sendPacket(lines, 0xff,  &(packet[3]), packetLength - 3);
+				bus.sendBroadcast(lines, &(packet[3]), packetLength - 3);
+				//bus.sendBroadcast(0xffff, &led, 1);
+				uint8_t data[6];
+				data[0] = 5;
+				data[1] = BUS_HOST_BROADCAST;
+				data[2] = packet[3];
+				data[3] = packetLength - 3;
+				data[4] = lines & 0xff;
+				data[5] = lines >> 8;
+				Serial.write(data, 6); //send data
+				Serial.flush();
 				break;
 			}
-			case BUS_LINES_STATE:
+			case BUS_HOST_FETCH:
+			{
+				uint8_t mcu = packet[1];
+				uint8_t data[35];
+				int size = 0;
+				HostBus::ErrorCode err = bus.receivePacket(1 << (mcu & 0xf), mcu, &(data[3]), size, 32);
+				if(err != HostBus::ERROR_SUCCESS)
+				{
+					data[0] = 4;
+					data[1] = BUS_HOST_ERROR;
+					data[2] = (uint8_t)err;
+					data[3] = mcu;
+					data[4] = (uint8_t)size;
+					Serial.write(data, 5); //send error packet
+					Serial.flush();
+					break;
+				}
+				data[0] = (uint8_t)(size + 2);
+				data[1] = BUS_HOST_FETCH;
+				data[2] = mcu;
+				Serial.write(data, size + 3); //send data
+				Serial.flush();
+				break;
+			}
+			case BUS_HOST_LINES_STATE:
 			{
 				uint16_t lines = bus.getCMD();
-				ser.writeUint8(3);
-				ser.writeUint8(BUS_LINES_STATE);
-				ser.writeUint8(lines & 0xff);
-				ser.writeUint8((lines >> 8) & 0xff);
-				ser.flush();
+				Serial.write(3);
+				Serial.write(BUS_HOST_LINES_STATE);
+				Serial.write(lines & 0xff);
+				Serial.write((lines >> 8) & 0xff);
+				Serial.flush();
 				break;
-			}
-			case BUS_PING:
-			{
-				pingMCUs();
-				ser.writeUint8(MAX_MCUS + 1);
-				ser.writeUint8(BUS_PING);
-				for(int i = 0; i < MAX_MCUS; i++)
-					ser.writeUint8(mcuStates[i]);
-				ser.flush();
-				break;
-			}
-			case BUS_RAYMARCHER_RENDER_PIXEL_RESULT:
-			{
-				pollResults();
-				break;
-			}
-			case BUS_RAYMARCHER_RENDER_PIXEL:
-			{
-				static uint8_t id;
-				id = ser.getUint8();
-				uint8_t data[25];
-				data[0] = BUS_RAYMARCHER_RENDER_PIXEL;
-				//origin
-				*(int32_t*)(&data[1]) = ser.readInt32();
-				*(int32_t*)(&data[5]) = ser.readInt32();
-				*(int32_t*)(&data[9]) = ser.readInt32();
-				//direction
-				*(int32_t*)(&data[13]) = ser.readInt32();
-				*(int32_t*)(&data[17]) = ser.readInt32();
-				*(int32_t*)(&data[21]) = ser.readInt32();
-				if(bus.sendPacket(1 << (id & 0xf), id, data, 25) != HostBus::ERROR_SUCCESS) 
-				{
-					bus.sendReset(1 << (id & 0xf), id);						
-					ser.writeUint8(2);
-					ser.writeUint8(BUS_PACKET_LOST);
-					ser.writeUint8(id);
-					ser.flush();
-					break;
-				}
-				mcuStates[id] = MCU_RAYMARCHING;
-				mcuRenderResultSize[id] = 0;
-				for(int i = 0; i < 3; i++)
-					mcuRenderResult[id][i] = 0;
-				break;				
-				/*uint8_t id = prepareRenderPacket();
-				//bus.resetCMD(1 << (id & 0xf));
-				if(bus.sendPacket(1 << (id & 0xf), id, (uint8_t*)mcuRenderStart[id], 25) != HostBus::ERROR_SUCCESS) 
-					break;
-				mcuStates[id] = MCU_RAYMARCHING;
-				mcuRenderResultSize[id] = 0;
-				break;*/
 			}
 			default:
+			{
 				break;
+			}
 		}
     }
 }
