@@ -1,4 +1,5 @@
 #pragma once
+#include <ch32v00x.h>
 
 static void SetSysClockTo_48MHz_HSEfix(void)
 {

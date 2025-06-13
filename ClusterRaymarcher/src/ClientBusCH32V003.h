@@ -2,6 +2,7 @@
 #include "ClientBus.h"
 #include <stdint.h>
 #include <ch32v00x.h>
+#include <core_riscv.h>
 #include "utils.h"
 
 void  busInterrupt(void) __attribute__((interrupt("WCH-Interrupt-fast")));

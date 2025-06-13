@@ -19,11 +19,12 @@ class ClientBus: public Bus
 		RequestType type = getType();
 		if(state != STATE_IDLE || type == REQUEST_RESET)
 		{
-			resetSignals(0);
 			if(state == STATE_RECEIVE) disableReceive();
 			if(state == STATE_TRANSMIT) disableTransmit();
+			inBuffer.clear();
+			outBuffer.clear();
 			state = STATE_IDLE;
-			//return;
+			resetSignals(0);
 		}
 		switch(type)
 		{

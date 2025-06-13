@@ -1,6 +1,7 @@
-#include "debug.h"
-#include "SystemClockfix.h"
 #include <ch32v00x.h>
+#include <stdio.h>
+#include "timer.h"
+#include "SystemClockfix.h"
 #include "raymarcher/raymarcher.h"
 #include "utils.h"
 #include "ClientBusCH32V003.h"
@@ -45,12 +46,10 @@ Vec3 pixelColor;
 bool renderPixel()
 {
 	if(bus.inBuffer.size < 24) return false;
-	//blink(1000);	
 	Vec3 pos;
 	Vec3 dir;
 	if(!readBusVec3(pos)) return false;
 	if(!readBusVec3(dir)) return false;
-	//blink(1000);	
 	int depth = 2;
 	led(1);
 	pixelColor = renderPixel(pos, dir, depth);
@@ -85,7 +84,7 @@ void busLoop()
 	{
 		while(bus.state != Bus::STATE_IDLE || bus.inBuffer.size == 0)
 		{
-			Delay_Us(10);
+			delayUs(1);
 		}
 		uint8_t cmd = 0;
 		bus.inBuffer.read(cmd);
@@ -137,10 +136,16 @@ int main(void)
 {
 	SetSysClockTo_48MHz_HSEfix();
 	SystemCoreClockUpdate();
-    Delay_Init();
+    initDelayTimer();
     initLED();
+	led(1);
     blink();
-    Delay_Ms(5000);
+	while(true)
+	{
+		blink(500);
+	}
+
+    delayMs(5000);
 	unlockD7();
     disableSWD(); 
 

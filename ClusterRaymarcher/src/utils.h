@@ -1,6 +1,6 @@
 #pragma once
 #include <ch32v00x.h>
-#include "debug.h"
+#include "timer.h"
 
 void enableSWD()
 {
@@ -16,18 +16,9 @@ void disableSWD()
 
 void led(int on = -1)
 {
-    GPIO_InitTypeDef GPIO_InitStructure = {0};
+	GPIO_InitTypeDef GPIO_InitStructure = {0};
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-/*    if(on == -1)
-        on = (GPIOA->OUTDR & 2)^2;
-
-    if(on)
-        GPIOA->BSHR = 2;
-    else
-        GPIOA->BCR = 2;*/
-    if(on == -1)
-        return;
     if(on)
     {
         GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
@@ -40,43 +31,38 @@ void led(int on = -1)
         GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
         GPIO_Init(GPIOA, &GPIO_InitStructure);
     }
+	return;
+    if(on == -1)
+        return;
+    if(on)
+    {
+        GPIOA->BSHR = 2;
+		GPIOA->CFGLR = (GPIOA->CFGLR & 0xf00) | 0x30;
+    }
+    else
+    {
+		GPIOA->CFGLR = (GPIOA->CFGLR & 0xf00) | 0x40;
+        //GPIOA->BCR = 2;
+    }
 }
 
 void blink(int ms = 100)
 {
     led(1);
-    Delay_Ms(ms >> 1);
+    delayMs(ms >> 1);
     led(0);
-    Delay_Ms(ms >> 1);
+    delayMs(ms >> 1);
 }
 
 void initLED()
 {
-    GPIO_InitTypeDef GPIO_InitStructure = {0};
+	GPIO_InitTypeDef GPIO_InitStructure = {0};
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOA, &GPIO_InitStructure);
-}
-
-volatile unsigned long time = 0;
-void __attribute__((interrupt("WCH-Interrupt-fast"))) SysTick_Handler(void)
-{
-    time++;
-    //led((time >> 17)&1);
-    SysTick->SR=0;
-    return;
-}
-
-void initTimerInterrupt()
-{
-    SysTick->SR=0;
-    SysTick->CNT=0;
-    SysTick->CMP=0x100;//0x100;
-    SysTick->CTLR=1 | 2 | 4 | 8;
-    NVIC_EnableIRQ(SysTicK_IRQn);
-    SetVTFIRQ((u32)SysTick_Handler, SysTicK_IRQn, 0, ENABLE);
+    //RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
 }
 
 int getMcuIndex()
