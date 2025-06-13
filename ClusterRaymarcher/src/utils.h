@@ -56,6 +56,7 @@ void blink(int ms = 100)
 
 void initLED()
 {
+	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
 	GPIO_InitTypeDef GPIO_InitStructure = {0};
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1;

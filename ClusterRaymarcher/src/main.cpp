@@ -16,8 +16,6 @@ void initPheripherals()
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD, ENABLE);
 //    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);
 	bus.init();
-    initLED();
-
 }
 
 
@@ -134,24 +132,23 @@ void busLoop()
 
 int main(void)
 {
-	SetSysClockTo_48MHz_HSEfix();
+	SetSysClockTo_48MHZ_HSIfix();
 	SystemCoreClockUpdate();
     initDelayTimer();
     initLED();
-	led(1);
     blink();
-	while(true)
-	{
-		blink(500);
-	}
 
     delayMs(5000);
 	unlockD7();
-    disableSWD(); 
+    //disableSWD(); 
 
     initPheripherals();
     blink();
     blink();
+	/*while(true)
+	{
+		blink(500);
+	}*/
 	loadScene();
 	busLoop();
 }

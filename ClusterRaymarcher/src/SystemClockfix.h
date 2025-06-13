@@ -1,64 +1,41 @@
 #pragma once
 #include <ch32v00x.h>
 
-static void SetSysClockTo_48MHz_HSEfix(void)
+static void SetSysClockTo_48MHZ_HSIfix(void)
 {
-    __IO uint32_t StartUpCounter = 0, HSEStatus = 0;
+    uint8_t tmp = 0;
 
-    /* Close PA0-PA1 GPIO function */
-    RCC->APB2PCENR |= RCC_AFIOEN;
-    AFIO->PCFR1 |= (1<<15);
+    tmp = *( uint8_t * )CFG0_PLL_TRIM;
 
-    RCC->CTLR |= ((uint32_t)RCC_HSEON);
-
-    /* Wait till HSE is ready and if Time out is reached exit */
-    do
+    if(tmp != 0xFF)
     {
-        HSEStatus = RCC->CTLR & RCC_HSERDY;
-        StartUpCounter++;
-    } while((HSEStatus == 0) && (StartUpCounter != HSE_STARTUP_TIMEOUT));
-
-    if ((RCC->CTLR & RCC_HSERDY) != RESET)
-    {
-        HSEStatus = (uint32_t)0x01;
-    }
-    else
-    {
-        HSEStatus = (uint32_t)0x00;
+        RCC_AdjustHSICalibrationValue((tmp & 0x1F));
     }
 
-    if (HSEStatus == (uint32_t)0x01)
+    /* Flash 0 wait state */
+    FLASH->ACTLR &= (uint32_t)((uint32_t)~FLASH_ACTLR_LATENCY);
+    FLASH->ACTLR |= (uint32_t)FLASH_ACTLR_LATENCY_1;
+
+    /* HCLK = SYSCLK = APB1 */
+    RCC->CFGR0 |= (uint32_t)RCC_HPRE_DIV1;
+
+    /* PLL configuration: PLLCLK = HSI * 2 = 48 MHz */
+    RCC->CFGR0 &= (uint32_t)((uint32_t)~(RCC_PLLSRC));
+    RCC->CFGR0 |= (uint32_t)(RCC_PLLSRC_HSI_Mul2);
+
+    /* Enable PLL */
+    RCC->CTLR |= RCC_PLLON;
+    /* Wait till PLL is ready */
+    while((RCC->CTLR & RCC_PLLRDY) == 0)
     {
-        /* Flash 0 wait state */
-        FLASH->ACTLR &= (uint32_t)((uint32_t)~FLASH_ACTLR_LATENCY);
-        FLASH->ACTLR |= (uint32_t)FLASH_ACTLR_LATENCY_1;
-
-        /* HCLK = SYSCLK = APB1 */
-        RCC->CFGR0 |= (uint32_t)RCC_HPRE_DIV1;
-
-        /* PLL configuration: PLLCLK = HSE * 2 = 48 MHz */
-        RCC->CFGR0 &= (uint32_t)((uint32_t)~(RCC_PLLSRC));
-        RCC->CFGR0 |= (uint32_t)(RCC_PLLSRC_HSE_Mul2);
-
-        /* Enable PLL */
-        RCC->CTLR |= RCC_PLLON;
-        /* Wait till PLL is ready */
-        while((RCC->CTLR & RCC_PLLRDY) == 0)
-        {
-        }
-        /* Select PLL as system clock source */
-        RCC->CFGR0 &= (uint32_t)((uint32_t)~(RCC_SW));
-        RCC->CFGR0 |= (uint32_t)RCC_SW_PLL;
-        /* Wait till PLL is used as system clock source */
-        while ((RCC->CFGR0 & (uint32_t)RCC_SWS) != (uint32_t)0x08)
-        {
-        }
     }
-    else
+    /* Select PLL as system clock source */
+    RCC->CFGR0 &= (uint32_t)((uint32_t)~(RCC_SW));
+    RCC->CFGR0 |= (uint32_t)RCC_SW_PLL;    
+    /* Wait till PLL is used as system clock source */
+    while ((RCC->CFGR0 & (uint32_t)RCC_SWS) != (uint32_t)0x08)
     {
-        /*
-         * If HSE fails to start-up, the application will have wrong clock
-     * configuration. User can add here some code to deal with this error
-         */
     }
+
+	AFIO->PCFR1 = 0; //reenable GPIOA
 }
