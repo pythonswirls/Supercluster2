@@ -1,6 +1,6 @@
 #pragma once
 #include "Bus.h"
-#include "debug.h"
+#include "timer.h"
 #include <stdint.h>
 
 class HostBus: public Bus
@@ -16,7 +16,7 @@ class HostBus: public Bus
 		int wait = timeout / 100; //100us per iteration
 		while(getACK() != value) 
 		{
-			Delay_Us(100);
+			delayUs(100);
 			wait--;
 			if(wait <= 0) 
 			{
@@ -32,7 +32,7 @@ class HostBus: public Bus
 		int wait = timeout / 100; //100us per iteration
 		while(getEOT() != value) 
 		{
-			Delay_Us(100);
+			delayUs(100);
 			wait--;
 			if(wait <= 0) 
 			{
@@ -48,7 +48,7 @@ class HostBus: public Bus
 		int wait = timeout / 100; //100us per iteration
 		while(getData() != value) 
 		{
-			Delay_Us(100);
+			delayUs(100);
 			wait--;
 			if(wait <= 0) 
 			{
@@ -81,10 +81,10 @@ class HostBus: public Bus
 		if(!waitDATA(0xff, lines, timeout))return ERROR_TIME_OUT_SET_DATA;		
 		setCLK();
 		setCMD(lines);
-		Delay_Us(signalDelayMicros);
+		delayUs(signalDelayMicros);
 		resetCMD(lines);
 		resetType();
-		Delay_Us(signalDelayMicros);
+		delayUs(signalDelayMicros);
 		resetCLK();
 		for(int i = 0; i < size; i++)
 		{
@@ -96,9 +96,9 @@ class HostBus: public Bus
 				if(!waitEOT(true, lines, timeout)) return ERROR_TIME_OUT_SET_EOT;
 			}
 			setCLK();
-			Delay_Us(signalDelayMicros);
+			delayUs(signalDelayMicros);
 			resetCLK();
-			Delay_Us(signalDelayMicros);
+			delayUs(signalDelayMicros);
 		}
 		resetData();
 		resetEOT();
@@ -168,9 +168,9 @@ class HostBus: public Bus
 		setData(id);
 		setCLK();
 		setCMD(lines);
-		Delay_Ms(1);
+		delayMs(1);
 		resetSignals(lines);
-		Delay_Ms(1);
+		delayMs(1);
 	}
 
 	ErrorCode receivePacket(uint16_t lines, uint8_t id, uint8_t *data, int &size, int maxSize, int timeout = 100000)

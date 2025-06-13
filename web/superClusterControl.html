@@ -58,8 +58,14 @@
 	height: 10px;
 	background-color: gray;
 	}
-	.mcu-box.active {
+	.mcu-box.pending {
 	background-color: lime;
+	}
+	.mcu-box.active {
+	background-color: green;
+	}
+	.mcu-box.na {
+	background-color: red;
 	}
 </style>
 </head>
@@ -117,6 +123,7 @@
 <div id="log"></div>
 
 <script>
+	const MAX_MCUS = 16;
 	const BUS_RAYMARCHER_INIT = 0x10;
 	const BUS_RAYMARCHER_RENDER_PIXEL = 0x11;
 	const BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x12;
@@ -140,10 +147,11 @@
 	let reader = null;
 	let writer = null;
 	let readBuffer = [];
+	let writeQueue = [];
 
 	const mcuGrid = document.getElementById("mcuGrid");
 	const mcuBoxes = [];
-	for (let i = 0; i < 160; i++) 
+	for (let i = 0; i < MAX_MCUS; i++) 
 	{
 		const div = document.createElement("div");
 		div.className = "mcu-box";
@@ -173,41 +181,51 @@
 
 	async function readLoop() 
 	{
-		try {
-			while (true) {
-			const { value, done } = await reader.read();
-			if (done) break;
-			if (value) {
-				readBuffer.push(...value);
-				processBufferedData();
-			}
+		try 
+		{
+			while (true) 
+			{
+				while(writeQueue.length == 0)
+					await new Promise(r => setTimeout(r, 1));
+				const packet = writeQueue.shift();
+				await writer.write(packet.payload);
+				log("TX: " + [...packet.payload].map(b => b.toString(16).padStart(2, '0')).join(' '));
+				while(true)
+				{
+					const {value, done} = await reader.read();
+					if (done) break;
+					if (value) 
+					{
+						readBuffer.push(...value);
+						if(processBufferedData(packet.callback)) break;
+					}
+				}
 			}
 		} catch (err) {
 			console.error('Read error:', err);
 		}
 	}
 
-	function processBufferedData() 
+	function processBufferedData(callback) 
 	{
-		while (readBuffer.length >= 2) 
+		const length = readBuffer[0];
+		if (readBuffer.length >= length + 1) 
 		{
-			const length = readBuffer[0];
-			if (readBuffer.length >= length + 1) 
-			{
-				const packet = readBuffer.slice(0, length + 1);
-				readBuffer = readBuffer.slice(length + 1);
-				handleHostResponse(new Uint8Array(packet));
-			} 
-			else
-			{
-				break;
-			}
+			const packet = readBuffer.slice(0, length + 1);
+			readBuffer = readBuffer.slice(length + 1);
+			handleHostResponse(new Uint8Array(packet), callback);
+			return true;
 		}
+		return false;
 	}
 
-	function handleHostResponse(packet) 
+	function handleHostResponse(packet, callback) 
 	{
+		const hex = [...packet].map(b => b.toString(16).padStart(2, '0')).join(' ');
+		log("RX: " + hex);
+
 		const instruction = packet[1];
+		let error = false;
 		switch (instruction) 
 		{
 			case BUS_HOST_FETCH:
@@ -216,13 +234,16 @@
 				handleClientResponse(mcu, packet.slice(3));
 				break;
 			}
+			case BUS_HOST_ERROR:
+				if(callback)
+					callback(false, packet);
+				return;
 			default:
 				console.log("Unknown host packet:");
 				console.log(...packet);
 				break;
 		}
-		const hex = [...packet].map(b => b.toString(16).padStart(2, '0')).join(' ');
-		log("RX: " + hex);
+		if(callback) callback(true, packet);
 	}
 
 	function handleClientResponse(mcu, packet)
@@ -232,6 +253,7 @@
 		{
 			case BUS_PING:
 			{
+				mcuBoxes[mcu].classList.remove("pending");
 				mcuBoxes[mcu].classList.add("active");
 				break;
 			}
@@ -243,25 +265,25 @@
 	}
 
 
-	async function sendHostInstruction(instruction, data = []) 
+	async function sendHostInstruction(instruction, data = [], callback = null) 
 	{
 		if (!writer) return;
 		const length = 1 + data.length;
 		const payload = new Uint8Array([length, instruction, ...data]);
-		await writer.write(payload);
-		log("TX: " + [...payload].map(b => b.toString(16).padStart(2, '0')).join(' '));
+		//await writer.write(payload);
+		writeQueue.push({payload: payload, callback: callback});
 	}
 
-	async function sendBroadcastInstruction(lines, instruction, data = []) 
+	async function sendBroadcastInstruction(lines, instruction, data = [], callback = null) 
 	{
 		const payload = new Uint8Array([lines & 0xff, (lines >> 8) & 0xff, instruction, ...data]);
-		sendHostInstruction(BUS_HOST_BROADCAST, payload);
+		sendHostInstruction(BUS_HOST_BROADCAST, payload, callback);
 	}
 
-	async function sendClientInstruction(mcu, instruction, data = []) 
+	async function sendClientInstruction(mcu, instruction, data = [], callback = null) 
 	{
 		const payload = new Uint8Array([mcu, instruction, ...data]);
-		sendHostInstruction(BUS_HOST_FORWARD, payload);
+		sendHostInstruction(BUS_HOST_FORWARD, payload, callback);
 	}
 
 	function log(text) 
@@ -287,7 +309,10 @@
 		for(let i = 0; i < 16; i++)
 		{
 			const index = baseIndex + i;
-			sendBroadcastInstruction(1 << i, BUS_CLIENT_SET_INDEX, [index, (~index) & 0xff]);
+			setTimeout( 
+				() => {
+					sendBroadcastInstruction(1 << i, BUS_CLIENT_SET_INDEX, [index, (~index) & 0xff]);
+				}, i * 1000);
 		}
 	});
 
@@ -302,17 +327,36 @@
 
 	document.getElementById("pingBtn").addEventListener("click", () => 
 	{
-		for(let i = 0; i < 160; i++)
+		for(let i = 0; i < MAX_MCUS; i++)
 		{
 			mcuBoxes[i].classList.remove("active");
-			sendClientInstruction(i, BUS_PING);
+			mcuBoxes[i].classList.remove("pending");
+			mcuBoxes[i].classList.remove("na");
+
+			sendClientInstruction(i, BUS_PING, [], (success, packet) => {
+				console.log(...packet);
+					console.log(i);
+				if(success)
+				{
+					mcuBoxes[i].classList.add("pending");
+					sendHostInstruction(BUS_HOST_FETCH, [i]);
+				}
+				else
+					mcuBoxes[i].classList.add("na");
+			});
 		}
 	});
 
 	document.getElementById("renderPixelResultBtn").addEventListener("click", () => 
 	{
 		const id = parseInt(document.getElementById("idCoord").value) || 0;
-		sendClientInstruction(id, BUS_RAYMARCHER_RENDER_PIXEL_RESULT, []);
+		sendClientInstruction(id, BUS_RAYMARCHER_RENDER_PIXEL_RESULT, [], (success, packet) =>
+		{
+			if(success)
+				sendHostInstruction(BUS_HOST_FETCH, [id], (success, packet) => {
+					
+				});
+		});
 	});
 
 	document.getElementById("renderPixelBtn").addEventListener("click", () => 

@@ -4,24 +4,24 @@ constexpr bool BOARD_TYPE_BASE = false;
 #include "usb/usb_serial.h"
 #include "systemFix.h"
 #include "raymarcher/raymarcher.h"
-#include <debug.h>
+//#include <debug.h>
+#include "timer.h"
 #include "gpio.h"
 #include "HostBusCH32V208.h"
 USBSerial Serial;
 
 /// old programmer //////////////////////////////////////
 
-
 int main(void)
 {
 	SetSysClockTo144_HSIfix();
 	SystemCoreClockUpdate();
-	Delay_Init();
-	Delay_Ms(100);
+	initDelayTimer();
+	delayMs(100);
 	Serial.begin(115200);
 	initGpio();
 	bus.init();
-	Delay_Ms(6000);
+	delayMs(6000);
 
     while(1)
     {
@@ -37,6 +37,7 @@ int main(void)
 		{
 			case BUS_HOST_RESET:
 			{
+				bus.sendReset(0xffff); //reset all lines
 				bus.resetSignals(0xffff); //reset all lines
 				uint8_t data[2];
 				data[0] = 1;
@@ -115,10 +116,15 @@ int main(void)
 			case BUS_HOST_LINES_STATE:
 			{
 				uint16_t lines = bus.getCMD();
-				Serial.write(3);
+				uint8_t lines2 = (bus.getCLK() ? 0 : 0x01) |
+					(bus.getACK() ? 0 : 0x02) |
+					(bus.getFULL() ? 0: 0x04) |
+					(bus.getEOT() ? 0: 0x08);
+				Serial.write(4);
 				Serial.write(BUS_HOST_LINES_STATE);
 				Serial.write(lines & 0xff);
 				Serial.write((lines >> 8) & 0xff);
+				Serial.write(lines2);
 				Serial.flush();
 				break;
 			}
