@@ -137,7 +137,10 @@ int main(void)
     initDelayTimer();
     initLED();
     blink();
-
+	/*while(true)
+	{
+		blink(500);
+	}*/
     delayMs(5000);
 	unlockD7();
     //disableSWD(); 
@@ -145,10 +148,6 @@ int main(void)
     initPheripherals();
     blink();
     blink();
-	/*while(true)
-	{
-		blink(500);
-	}*/
 	loadScene();
 	busLoop();
 }
