@@ -7,153 +7,273 @@
 </head>
 <body>
 	<button id="connect">Connect Serial</button>
+	<button id="reset">Reset</button>
 	<button id="send">Render</button>
-	<canvas id="canvas" width="128" height="72" style="zoom: 4"></canvas>
+	<canvas id="canvas" width="256" height="144" style="zoom: 4"></canvas>
 
 <script>
 
 ///////////////////////////// WebSerial //////////////////////////////
-const TARGET_VENDOR_ID = 0x1A86; // Replace with your device's USB Vendor ID (e.g., Arduino = 0x2341)
-const TARGET_PRODUCT_ID = 0xFFFF; // Optional: use if you want to filter by USB Product ID
+	const TARGET_VENDOR_ID = 0x1A86; // Replace with your device's USB Vendor ID (e.g., Arduino = 0x2341)
+	const TARGET_PRODUCT_ID = 0xFFFF; // Optional: use if you want to filter by USB Product ID
 
-let port;
-let writer;
-let reader;
+	let port = null;
+	let reader = null;
+	let writer = null;
+	let readBuffer = [];
+	let writeQueue = [];
 
-document.getElementById("connect").addEventListener("click", async () => {
-try {
-	port = await navigator.serial.requestPort({
-	filters: [{ usbVendorId: TARGET_VENDOR_ID, usbProductId:TARGET_PRODUCT_ID }]
-	});
-	await connectToPort(port);
-} catch (err) {
-	console.error("Manual connection failed:", err);
-}
-});
-
-document.getElementById("send").addEventListener("click", async () => {
-	if (!port || !port.writable) {
-		console.warn("Serial port not connected.");
-		return;
-	}
-	start();
-	setInterval(fetchData, 200);
-});
-
-async function connectToPort(serialPort) {
-	await serialPort.open({ baudRate: 115200 });
-	console.log("Serial port opened.");
-
-	// Setup reader
-	reader = serialPort.readable.getReader();
-	readLoop();
-
-	port = serialPort;
-}
-
-let receiveBuffer = new Uint8Array(0); // growable buffer
-
-async function readLoop() 
-{
+	document.getElementById("connect").addEventListener("click", async () => {
 	try {
-		while (true) {
-		const { value, done } = await reader.read();
-		if (done) break;
-		if (value) bufferIncomingData(value);
-		}
-	} catch (error) {
-		console.error("Read error:", error);
-	} finally {
-		reader.releaseLock();
+		port = await navigator.serial.requestPort({
+		filters: [{ usbVendorId: TARGET_VENDOR_ID, usbProductId:TARGET_PRODUCT_ID }]
+		});
+		await connectToPort(port);
+	} catch (err) {
+		console.error("Manual connection failed:", err);
 	}
-}
+	});
 
-async function bufferIncomingData(newData) {
-	// Concatenate existing buffer with new incoming data
-	const combined = new Uint8Array(receiveBuffer.length + newData.length);
-	combined.set(receiveBuffer);
-	combined.set(newData, receiveBuffer.length);
-	receiveBuffer = combined;
-
-	let processed;
-	const BUS_PACKET_LOST = 0xfe;
-	const BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x42;
-	do{
-		processed = false;
-		if(receiveBuffer.length >= 1 && receiveBuffer.length >= receiveBuffer[0] + 1)
-		{
-			const packet = receiveBuffer.slice(1, receiveBuffer[0] + 1);
-			receiveBuffer = receiveBuffer.slice(receiveBuffer[0] + 1);
-			switch(packet[0])
-			{
-				case BUS_PACKET_LOST:
-					await sendData(workers[packet[1]]); //retry
-					break;
-				case BUS_RAYMARCHER_RENDER_PIXEL_RESULT:
-					if(packet.length < 14) break; //data faulty everything messed up
-					receiveData(packet);
-					break;
-				default:
-			}
-			processed = true;
+	document.getElementById("send").addEventListener("click", async () => {
+		if (!port || !port.writable) {
+			console.warn("Serial port not connected.");
+			return;
 		}
-	}while(processed);
-}	
+		start();
+	});
 
-function receiveData(data) {
-	const view = new DataView(data.buffer);
-	const mcu = view.getUint8(1);
-	const pixel = workers[mcu];
-	if(!pixel) 
-		console.log("wrong mcu? " + mcu);
-	else
-		pixel.color = veci(view.getUint32(2, true), view.getUint32(6, true), view.getUint32(10, true));
-	workerDone(pixel);
-}
+	document.getElementById("reset").addEventListener("click", async () => {
+		sendHostInstruction(BUS_HOST_RESET);		
+	});
 
-let lockCount = 0;
-async function sendData(pixel)
-{
-	//12 + 12
-	pixel.time = Date.now();
-	const buffer = new ArrayBuffer(26);
-	const view = new DataView(buffer);
-	view.setUint8(0, 0x41);
-	view.setUint8(1, pixel.id);
-	view.setUint32(2, pixel.origin.v[0], true); // little-endian
-	view.setUint32(6, pixel.origin.v[1], true);
-	view.setUint32(10, pixel.origin.v[2], true);
-	view.setUint32(14, pixel.dir.v[0], true);
-	view.setUint32(18, pixel.dir.v[1], true);
-	view.setUint32(22, pixel.dir.v[2], true);
-	setTimeout(() =>
+	async function connectToPort(serialPort) 
 	{
-		lockCount++;
-		const writer = port.writable.getWriter();
-		writer.write(buffer);
-		writer.releaseLock();
-		lockCount--;
-	}, 0);
-}
+		await serialPort.open({ baudRate: 115200 });
+		console.log("Serial port opened.");
+
+		// Setup reader
+		reader = serialPort.readable.getReader();
+		writer = serialPort.writable.getWriter();
+		readLoop();
+
+		port = serialPort;
+	}
+
+	const MAX_MCUS = 16;
+	const BUS_RAYMARCHER_INIT = 0x10;
+	const BUS_RAYMARCHER_RENDER_PIXEL = 0x11;
+	const BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x12;
+
+	const BUS_LED = 0xd0;
+	const BUS_PING = 0xd1;
+	
+	const BUS_CLIENT_RESET = 0xe0;	//reset client
+	const BUS_CLIENT_SET_INDEX = 0xe4;
+	const BUS_CLIENT_ERROR = 0xe5;	//error in client
+
+	const BUS_HOST_RESET = 0xf0;
+	const BUS_HOST_FORWARD = 0xf1;	//forward packet to client
+	const BUS_HOST_BROADCAST = 0xf2;	//broadcast packet to flagged clients
+	const BUS_HOST_FETCH = 0xf3;	//fetch data from client
+	const BUS_HOST_LINES_STATE = 0xf4;
+	const BUS_HOST_ERROR = 0xf5;
+	const BUS_HOST_SUCCESS = 0xf6;
+
+/*
+	const mcuGrid = document.getElementById("mcuGrid");
+	const mcuBoxes = [];
+	for (let i = 0; i < MAX_MCUS; i++) 
+	{
+		const div = document.createElement("div");
+		div.className = "mcu-box";
+		mcuGrid.appendChild(div);
+		mcuBoxes.push(div);
+	}*/
+/*
+	async function connectSerial() 
+	{
+		try {
+			port = await navigator.serial.requestPort();
+			await port.open({ baudRate: 115200 });
+
+			writer = port.writable.getWriter();
+			reader = port.readable.getReader();
+
+			document.getElementById("status").textContent = "Connected";
+			document.getElementById("status").style.color = "lightgreen";
+
+			readLoop();
+		} catch (err) {
+			console.error("Connection error:", err);
+			document.getElementById("status").textContent = "Disconnected";
+			document.getElementById("status").style.color = "red";
+		}
+	}
+*/
+	async function readLoop() 
+	{
+		try 
+		{
+			while (true) 
+			{
+				if(writeQueue.length == 0)
+				{
+					while(writeQueue.length == 0)
+					{
+						await new Promise(r => setTimeout(r, 1));
+						fetchData();
+					}
+				}
+				const packet = writeQueue.shift();
+				await writer.write(packet.payload);
+				log("TX: " + [...packet.payload].map(b => b.toString(16).padStart(2, '0')).join(' '));
+				while(true)
+				{
+					const {value, done} = await reader.read();
+					if (done) break;
+					if (value) 
+					{
+						readBuffer.push(...value);
+						if(processBufferedData(packet.callback)) break;
+					}
+				}
+			}
+		} catch (err) {
+			console.error('Read error:', err);
+		}
+	}
+
+	function processBufferedData(callback) 
+	{
+		const length = readBuffer[0];
+		if (readBuffer.length >= length + 1) 
+		{
+			const packet = readBuffer.slice(0, length + 1);
+			readBuffer = readBuffer.slice(length + 1);
+			handleHostResponse(new Uint8Array(packet), callback);
+			return true;
+		}
+		return false;
+	}
+
+	function log()
+	{
+	}
+
+	function handleHostResponse(packet, callback) 
+	{
+		const hex = [...packet].map(b => b.toString(16).padStart(2, '0')).join(' ');
+		log("RX: " + hex);
+
+		const instruction = packet[1];
+		let error = false;
+		switch (instruction) 
+		{
+			case BUS_HOST_FETCH:
+			{
+				const mcu = packet[2];
+				handleClientResponse(mcu, packet.slice(3));
+				break;
+			}
+			case BUS_HOST_ERROR:
+				if(callback)
+					callback(false, packet);
+				return;
+			default:
+				/*console.log("Unknown host packet:");
+				console.log(...packet);*/
+				break;
+		}
+		if(callback) callback(true, packet);
+	}
+
+	function handleClientResponse(mcu, packet)
+	{
+		const instruction = packet[0];
+		switch (instruction) 
+		{
+			case BUS_PING:
+			{
+				mcuBoxes[mcu].classList.remove("pending");
+				mcuBoxes[mcu].classList.add("active");
+				break;
+			}
+			case BUS_RAYMARCHER_RENDER_PIXEL_RESULT:
+				if(packet.length < 13) break;
+				receiveData(mcu, packet);
+				break;
+			default:
+				//console.log("Unknown client packet:");
+				//console.log(...packet);
+				break;
+		}
+	}
+
+
+	async function sendHostInstruction(instruction, data = [], callback = null) 
+	{
+		if (!writer) return;
+		const length = 1 + data.length;
+		const payload = new Uint8Array([length, instruction, ...data]);
+		//await writer.write(payload);
+		writeQueue.push({payload: payload, callback: callback});
+	}
+
+	async function sendBroadcastInstruction(lines, instruction, data = [], callback = null) 
+	{
+		const payload = new Uint8Array([lines & 0xff, (lines >> 8) & 0xff, instruction, ...data]);
+		sendHostInstruction(BUS_HOST_BROADCAST, payload, callback);
+	}
+
+	async function sendClientInstruction(mcu, instruction, data = [], callback = null) 
+	{
+		const payload = new Uint8Array([mcu, instruction, ...data]);
+		sendHostInstruction(BUS_HOST_FORWARD, payload, callback);
+	}
+
+	function receiveData(mcu, data) 
+	{
+		const view = new DataView(data.buffer);
+		const pixel = workers[mcu];
+		if(!pixel) 
+			console.log("wrong mcu? " + mcu);
+		else
+			pixel.color = veci(view.getUint32(1, true), view.getUint32(5, true), view.getUint32(9, true));
+		workerDone(pixel);
+	}
+
+	async function sendData(pixel)
+	{
+		//12 + 12
+		pixel.time = Date.now();
+		pixel.lastFetch = Date.now();
+		const data = new ArrayBuffer(24);
+		const view = new DataView(data);
+		view.setUint32(0, pixel.origin.v[0], true); // little-endian
+		view.setUint32(4, pixel.origin.v[1], true);
+		view.setUint32(8, pixel.origin.v[2], true);
+		view.setUint32(12, pixel.dir.v[0], true);
+		view.setUint32(16, pixel.dir.v[1], true);
+		view.setUint32(20, pixel.dir.v[2], true);
+		sendClientInstruction(pixel.id, BUS_RAYMARCHER_RENDER_PIXEL, new Uint8Array(data));
+	}
 
 async function fetchData()
 {
-	//12 + 12
-	const buffer = new ArrayBuffer(1);
-	const view = new DataView(buffer);
-	view.setUint8(0, 0x42);
-	setTimeout(() =>
+	for(let i = 0; i < MAX_MCUS; i++)
+	if(workers[i])
 	{
-		const writer = port.writable.getWriter();
-		writer.write(buffer);
-		writer.releaseLock();
-	}, 0);
-	for(let i = 0; i < WORKER_COUNT; i++)
-	{
-		const TIMEOUT = 1000; 
-		if(workers[i] && Date.now() - workers[i].time > TIMEOUT)
+		const t = Date.now();
+		if(t - workers[i].time > 2000)
 		{
-			await sendData(workers[i]);
+			sendClientInstruction(i, BUS_CLIENT_RESET);
+			sendData(workers[i]);
+		}
+		else
+		if(t - workers[i].lastFetch > 10)
+		{
+			workers[i].lastFetch = t;
+			sendHostInstruction(BUS_HOST_FETCH, [i]);
 		}
 	}
 }
@@ -218,7 +338,11 @@ let rendererScene = null;
 
 function nextPixel()
 {
-	if(rendery == yres) return;
+	if(rendery == yres)
+	{
+		ctx.putImageData(imageData, 0, 0);
+		return;
+	}
 	let u = -(renderx - xres / 2) / xres * 1.6 * (xres / yres);
 	let v = -(rendery - yres / 2) / yres * 1.6;
 	let ro = rendererScene.cameraPos;
@@ -244,7 +368,6 @@ function nextPixel()
 	return pixel;
 }
 
-const WORKER_COUNT = 4; //160; 
 let workers = [];
 
 async function workerDone(pixel)
@@ -258,6 +381,7 @@ async function workerDone(pixel)
 	data[i + 2] = color.v[2] >> 16;
 	data[i + 3] = 255;
 	const id = pixel.id;
+	workers[id] = null;
 	//do next pixel
 	pixel = nextPixel();
 	if(pixel) 
@@ -275,8 +399,8 @@ function render(scene) {
     yres = canvas.height;
 	renderx = 0;
 	rendery = 0;
-	workers = new Array(WORKER_COUNT);
-	for(let i = 0; i < WORKER_COUNT; i++)
+	workers = new Array(MAX_MCUS);
+	for(let i = 0; i < MAX_MCUS; i++)
 	{
 		pixel = nextPixel();
 		if(pixel) 

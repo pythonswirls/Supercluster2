@@ -49,11 +49,11 @@ bool renderPixel()
 	if(!readBusVec3(pos)) return false;
 	if(!readBusVec3(dir)) return false;
 	int depth = 2;
-	led(1);
+	//led(1);
 	pixelColor = renderPixel(pos, dir, depth);
 	bus.outBuffer.write((uint8_t)BUS_RAYMARCHER_RENDER_PIXEL_RESULT);
 	writeBusVec3(pixelColor);
-	led(0);
+	//led(0);
 	return true;
 }
 
