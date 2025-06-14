@@ -132,7 +132,7 @@ void setMcuIndex(uint8_t addr)
 		blink();blink();blink();
 		return;
 	}*/
-	ledTimeout(1000);
+	//ledTimeout(1000);
 }
 
 void unlockD7()

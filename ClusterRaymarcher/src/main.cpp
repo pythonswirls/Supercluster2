@@ -51,8 +51,10 @@ bool renderPixel()
 	int depth = 2;
 	//led(1);
 	pixelColor = renderPixel(pos, dir, depth);
+	bus.busy = true;
 	bus.outBuffer.write((uint8_t)BUS_RAYMARCHER_RENDER_PIXEL_RESULT);
 	writeBusVec3(pixelColor);
+	bus.busy = false;
 	//led(0);
 	return true;
 }
@@ -142,7 +144,7 @@ int main(void)
 
     initPheripherals();
     //blink();
-    blink();
+    //blink();
 	loadScene();
 	busLoop();
 }

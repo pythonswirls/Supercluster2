@@ -9,7 +9,7 @@
 	<button id="connect">Connect Serial</button>
 	<button id="reset">Reset</button>
 	<button id="send">Render</button>
-	<canvas id="canvas" width="256" height="144" style="zoom: 4"></canvas>
+	<canvas id="canvas" width="640" height="360" style="zoom: 2"></canvas>
 
 <script>
 
@@ -156,8 +156,9 @@
 		return false;
 	}
 
-	function log()
+	function log(bla)
 	{
+		console.log(bla);
 	}
 
 	function handleHostResponse(packet, callback) 

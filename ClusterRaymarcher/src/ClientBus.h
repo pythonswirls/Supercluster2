@@ -6,11 +6,13 @@
 class ClientBus: public Bus
 {
 	public:
+	bool busy;
 	RingBuffer<> inBuffer;
 	RingBuffer<> outBuffer;
 
 	ClientBus()
-		:Bus()
+		:Bus(),
+		busy(false)
 	{
 	}
 
@@ -44,7 +46,7 @@ class ClientBus: public Bus
 				if(getData() != id) break;
 				enableTransmit();
 				state = STATE_TRANSMIT;
-				if(outBuffer.size == 0) setEOT();
+				if(outBuffer.size == 0 || busy) setEOT();
 				setACK();
 				break;
 			case REQUEST_RESET:
