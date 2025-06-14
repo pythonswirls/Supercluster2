@@ -13,15 +13,20 @@ void __attribute__((interrupt("WCH-Interrupt-fast"))) SysTick_Handler(void)
 
 void initDelayTimer()
 {
-	SysTick->SR=0;
-	SysTick->CNT=0;
-	SysTick->CMP=0x0;//0x100;
-	SysTick->CTLR= 
+	SysTick->SR = 0;
+	SysTick->CNT = 0;
+	SysTick->CMP = 0;
+	SysTick->CTLR = 
 		1 | // enable timer
 		0 | // enable interrupt
 		4 | // select clock source (HCLK) 0 = AHB/8, 1 = AHB
 		0; // free running mode
 	//Delay_Init();
+}
+
+void resetTimer()
+{
+	SysTick->CNT = 0;
 }
 
 inline uint32_t getTime()

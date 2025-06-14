@@ -54,6 +54,21 @@ void blink(int ms = 100)
     delayMs(ms >> 1);
 }
 
+volatile uint32_t ledTimeoutTicks = 0;
+void ledTimeout(uint32_t time = 100)
+{
+	resetTimer();
+	led(1);
+	ledTimeoutTicks = ms2ticks(time);
+}
+
+void processLedTimeOut()
+{
+	if(ledTimeoutTicks)
+		if(getTime() >= ledTimeoutTicks)
+			led(0);
+}
+
 void initLED()
 {
 	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
@@ -136,7 +151,7 @@ void setMcuIndex(uint8_t addr)
 		blink();blink();blink();
 		return;
 	}*/
-	blink(1000);
+	ledTimeout(1000);
 }
 
 void unlockD7()

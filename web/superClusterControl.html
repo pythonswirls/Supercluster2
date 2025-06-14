@@ -327,7 +327,7 @@
 
 	document.getElementById("pingBtn").addEventListener("click", () => 
 	{
-		for(let i = 0; i < MAX_MCUS; i++)
+		for(let i = 15; i >= 0; i--)
 		{
 			mcuBoxes[i].classList.remove("active");
 			mcuBoxes[i].classList.remove("pending");
@@ -340,6 +340,7 @@
 				{
 					mcuBoxes[i].classList.add("pending");
 					sendHostInstruction(BUS_HOST_FETCH, [i]);
+//					setTimeout(() => {sendHostInstruction(BUS_HOST_FETCH, [i])}, 1000);
 				}
 				else
 					mcuBoxes[i].classList.add("na");

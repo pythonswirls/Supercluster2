@@ -74,10 +74,7 @@ int main(void)
 			case BUS_HOST_BROADCAST:
 			{
 				uint16_t lines = *(uint16_t*)&(packet[1]);
-				//uint8_t led = BUS_LED;
-//				HostBus::ErrorCode err = bus.sendPacket(lines, 0xff,  &(packet[3]), packetLength - 3);
 				bus.sendBroadcast(lines, &(packet[3]), packetLength - 3);
-				//bus.sendBroadcast(0xffff, &led, 1);
 				uint8_t data[6];
 				data[0] = 5;
 				data[1] = BUS_HOST_BROADCAST;

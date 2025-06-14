@@ -164,9 +164,8 @@ class ClientBusCH32V003: public ClientBus
 		return (GPIOD->INDR & 0b00000001) == 0; //get PD0
 	}
 
-	virtual void debug(uint8_t data) {
-		for(int i = 0; i < data; i++)
-			blink();
+	virtual void debug(uint8_t data) 
+	{
 	};
 };
 

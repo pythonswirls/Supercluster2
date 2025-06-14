@@ -60,7 +60,7 @@ bool renderPixel()
 bool sendPing()
 {
 	bool ret = bus.outBuffer.write((uint8_t)BUS_PING);
-	blink();
+	ledTimeout();
 	return ret;
 }
 
@@ -82,7 +82,7 @@ void busLoop()
 	{
 		while(bus.state != Bus::STATE_IDLE || bus.inBuffer.size == 0)
 		{
-			delayUs(1);
+			processLedTimeOut();
 		}
 		uint8_t cmd = 0;
 		bus.inBuffer.read(cmd);
@@ -100,12 +100,13 @@ void busLoop()
 				uint8_t checksum;
 				bus.inBuffer.read(checksum);
 				if(newId != static_cast<uint8_t>(~checksum)) break;
+				id = newId;
 				setMcuIndex(id);
 				bus.id = id;
 				break;
 			}
 			case BUS_LED:
-				blink();
+				ledTimeout();
 				break;
 
 			case BUS_RAYMARCHER_INIT:
@@ -121,7 +122,7 @@ void busLoop()
 				bus.outBuffer.clear();
 				bus.inBuffer.clear();
 				bus.state = Bus::STATE_IDLE;
-				//blink(500);
+				ledTimeout(500);
 				break;
 			default:
 			//nope
@@ -137,10 +138,6 @@ int main(void)
     initDelayTimer();
     initLED();
     blink();
-	/*while(true)
-	{
-		blink(500);
-	}*/
     delayMs(5000);
 	unlockD7();
     //disableSWD(); 
