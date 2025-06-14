@@ -129,7 +129,8 @@ class Bus
 		REQUEST_RESET = 0,
 		REQUEST_RECEIVE = 1,
 		REQUEST_TRANSMIT = 2,
-		REQUEST_BROADCAST = 3
+		REQUEST_BROADCAST = 3,
+		REQUEST_NONE = 3
 	};
 
 	enum ClientState
@@ -163,6 +164,7 @@ class Bus
 
 	virtual void setCMD(uint16_t lines) = 0;
 	virtual void resetCMD(uint16_t lines) = 0;
+	virtual uint16_t getCMD() = 0;
 
 	virtual void setCLK() = 0;
 	virtual void resetCLK() = 0;
@@ -198,6 +200,96 @@ class Bus
 		resetType();
 		resetData();
 	}
+
+	bool waitACK(bool value, uint16_t lines, int timeout)
+	{
+		uint32_t end = us2ticks(timeout);
+		uint32_t t = getTime();
+		while(getACK() != value) 
+		{
+			if(getTime() - t >= end) 
+			{
+				resetSignals(lines);
+				return false; //timeout
+			}
+		}
+		return true; //ACK set
+	}
+
+	bool waitEOT(bool value, uint16_t lines, int timeout)
+	{
+		uint32_t end = us2ticks(timeout);
+		uint32_t t = getTime();
+		while(getEOT() != value) 
+		{
+			if(getTime() - t >= end) 
+			{
+				resetSignals(lines);
+				return false; //timeout
+			}
+		}
+		return true; //EOT set
+	}
+
+	bool waitCLK(bool value, uint16_t lines, int timeout)
+	{
+		uint32_t end = us2ticks(timeout);
+		uint32_t t = getTime();
+		while(getCLK() != value) 
+		{
+			if(getTime() - t >= end) 
+			{
+				resetSignals(lines);
+				return false; //timeout
+			}
+		}
+		return true; //ACK set
+	}
+
+	bool waitDATA(uint8_t value, uint16_t lines, int timeout)
+	{
+		uint32_t end = us2ticks(timeout);
+		uint32_t t = getTime();
+		while(getData() != value) 
+		{
+			if(getTime() - t >= end) 
+			{
+				resetSignals(lines);
+				return false; //timeout
+			}
+		}
+		return true; //data correct
+	}
+
+	bool waitTYPE(Bus::RequestType type, uint16_t lines, int timeout)
+	{
+		uint32_t end = us2ticks(timeout);
+		uint32_t t = getTime();
+		while(getType() != type) 
+		{
+			if(getTime() - t >= end) 
+			{
+				resetSignals(lines);
+				return false; //timeout
+			}
+		}
+		return true; //data correct
+	}
+
+	bool waitCMD(uint16_t lines, int timeout)
+	{
+		uint32_t end = us2ticks(timeout);
+		uint32_t t = getTime();
+		while(getCMD() != lines) 
+		{
+			if(getTime() - t >= end) 
+			{
+				resetSignals(lines);
+				return false; //timeout
+			}
+		}
+		return true; //data correct
+	}	
 
 	virtual void debug(uint8_t data) {};
 

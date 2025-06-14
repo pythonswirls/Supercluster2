@@ -59,9 +59,11 @@ bool renderPixel()
 
 bool sendPing()
 {
-	bool ret = bus.outBuffer.write((uint8_t)BUS_PING);
-	ledTimeout();
-	return ret;
+	//ledPower = 1;
+	//ledTimeout();
+	if(!bus.outBuffer.write((uint8_t)BUS_PING)) return false;
+	if(!bus.outBuffer.write(bus.id)) return false;
+	return true;
 }
 
 volatile uint16_t packetsLost = 0;
@@ -90,15 +92,11 @@ void busLoop()
 		{
 			case BUS_CLIENT_SET_INDEX:
 			{
-				if(bus.inBuffer.size < 2)
-				{
-					packetLost();
-					continue;
-				}
-				uint8_t newId;
+				uint8_t newId = 0;
 				bus.inBuffer.read(newId);
-				uint8_t checksum;
+				uint8_t checksum = 0;
 				bus.inBuffer.read(checksum);
+				//if(bus.id != 255) break;
 				if(newId != static_cast<uint8_t>(~checksum)) break;
 				id = newId;
 				setMcuIndex(id);
@@ -137,13 +135,13 @@ int main(void)
 	SystemCoreClockUpdate();
     initDelayTimer();
     initLED();
-    blink();
-    delayMs(5000);
+    //blink();
+    //delayMs(5000);
 	unlockD7();
     //disableSWD(); 
 
     initPheripherals();
-    blink();
+    //blink();
     blink();
 	loadScene();
 	busLoop();

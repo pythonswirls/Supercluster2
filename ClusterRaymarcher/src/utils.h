@@ -16,49 +16,28 @@ void disableSWD()
 
 void led(int on = -1)
 {
-	GPIO_InitTypeDef GPIO_InitStructure = {0};
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    if(on)
-    {
-        GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-        GPIOA->BSHR = 2;
-        GPIO_Init(GPIOA, &GPIO_InitStructure);
-    }
-    else
-    {
-        GPIOA->BCR = 2;
-        GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
-        GPIO_Init(GPIOA, &GPIO_InitStructure);
-    }
-	return;
-    if(on == -1)
-        return;
-    if(on)
-    {
-        GPIOA->BSHR = 2;
+    if(on == 1)
+		GPIOA->CFGLR = (GPIOA->CFGLR & 0xf00) | 0x80;
+    else if(on == 255)
 		GPIOA->CFGLR = (GPIOA->CFGLR & 0xf00) | 0x30;
-    }
-    else
-    {
+	else
 		GPIOA->CFGLR = (GPIOA->CFGLR & 0xf00) | 0x40;
-        //GPIOA->BCR = 2;
-    }
 }
 
 void blink(int ms = 100)
 {
-    led(1);
+    led(255);
     delayMs(ms >> 1);
     led(0);
     delayMs(ms >> 1);
 }
 
+volatile uint32_t ledPower = 1;
 volatile uint32_t ledTimeoutTicks = 0;
 void ledTimeout(uint32_t time = 100)
 {
 	resetTimer();
-	led(1);
+	led(ledPower);
 	ledTimeoutTicks = ms2ticks(time);
 }
 
@@ -71,14 +50,16 @@ void processLedTimeOut()
 
 void initLED()
 {
-	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
+	/*NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
 	GPIO_InitTypeDef GPIO_InitStructure = {0};
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOA, &GPIO_InitStructure);
-    //RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+*/
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+	GPIOA->BSHR = 2;
 }
 
 int getMcuIndex()

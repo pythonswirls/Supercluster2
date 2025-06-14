@@ -1,7 +1,6 @@
 #pragma once
 #include <stdint.h>
 #include <core_riscv.h>
-#include "debug.h"
 
 /*
 void __attribute__((interrupt("WCH-Interrupt-fast"))) SysTick_Handler(void)
@@ -21,7 +20,6 @@ void initDelayTimer()
 		0 | // enable interrupt
 		4 | // select clock source (HCLK) 0 = AHB/8, 1 = AHB
 		0; // free running mode
-	//Delay_Init();
 }
 
 void resetTimer()
@@ -54,14 +52,10 @@ inline void delayTicks(uint32_t ticks)
 
 inline void delayUs(uint32_t us)
 {
-	//Delay_Us(us);
-	//return;
 	delayTicks(us2ticks(us));
 }
 
 inline void delayMs(uint32_t ms)
 {
-	//Delay_Ms(ms);
-	//return;
 	delayTicks(ms2ticks(ms));
 }

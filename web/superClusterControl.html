@@ -113,6 +113,7 @@
 </div>
 
 <div class="control-row">
+	<button id="resetBtn">Reset</button>
 	<button id="pingBtn">Ping</button>
 </div>
 
@@ -123,7 +124,7 @@
 <div id="log"></div>
 
 <script>
-	const MAX_MCUS = 16;
+	const MAX_MCUS = 32;
 	const BUS_RAYMARCHER_INIT = 0x10;
 	const BUS_RAYMARCHER_RENDER_PIXEL = 0x11;
 	const BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x12;
@@ -312,7 +313,7 @@
 			setTimeout( 
 				() => {
 					sendBroadcastInstruction(1 << i, BUS_CLIENT_SET_INDEX, [index, (~index) & 0xff]);
-				}, i * 1000);
+				}, i * 2000);
 		}
 	});
 
@@ -325,9 +326,14 @@
 			sendClientInstruction(mcu, BUS_LED);
 	});
 
+	document.getElementById("resetBtn").addEventListener("click", () => 
+	{
+		sendHostInstruction(BUS_HOST_RESET);
+	});
+
 	document.getElementById("pingBtn").addEventListener("click", () => 
 	{
-		for(let i = 15; i >= 0; i--)
+		for(let i = 0; i < MAX_MCUS; i++)
 		{
 			mcuBoxes[i].classList.remove("active");
 			mcuBoxes[i].classList.remove("pending");

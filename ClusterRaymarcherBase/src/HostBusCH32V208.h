@@ -46,6 +46,8 @@ class HostBusCH32V208: public HostBus
 			else
 				cfg |= (0b0100 /*open drain*/ | 0b11 /*30MHz output*/) << (4 * i);
 		GPIOB->CFGHR = cfg;
+		//float LED pin on MCUs
+		GPIOC->CFGLR = 0x44444444;
 		return true;
 	}
 
@@ -112,6 +114,7 @@ class HostBusCH32V208: public HostBus
 	
 	virtual void setType(RequestType type)
 	{
+		//TODO one write
 		GPIOB->BCR = 0b0000110000000000; //set PB10 and PB11 low, request type
 		GPIOB->BSHR = (uint32_t)type << 10; //set PB10 and PB11 to type
 	}
@@ -123,7 +126,7 @@ class HostBusCH32V208: public HostBus
 
 	virtual RequestType getType()
 	{
-		return (RequestType)((GPIOD->INDR & 0b0000110000000000) >> 10); //get PB10 and PB11, request type
+		return (RequestType)((GPIOD->INDR >> 10) & 0b11); //get PB10 and PB11, request type
 	}
 
 	virtual void setData(uint8_t data)
@@ -162,7 +165,7 @@ class HostBusCH32V208: public HostBus
 	{
 		uint16_t lines = 0;
 		for(int i = 0; i < 16; i++)
-			lines |= ((mcuBank[i]->INDR >> mcuPin[i]) & 1) << i;
+			lines |= (((mcuBank[i]->INDR >> mcuPin[i]) & 1) ^ 1) << i;
 		return lines;
 	}
 

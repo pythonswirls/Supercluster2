@@ -164,8 +164,14 @@ class ClientBusCH32V003: public ClientBus
 		return (GPIOD->INDR & 0b00000001) == 0; //get PD0
 	}
 
+	virtual uint16_t getCMD()
+	{
+		return ((GPIOA->INDR >> 2) & 1) == 0; //get PA 2
+	}
+
 	virtual void debug(uint8_t data) 
 	{
+		led(data? 1 : 0);
 	};
 };
 

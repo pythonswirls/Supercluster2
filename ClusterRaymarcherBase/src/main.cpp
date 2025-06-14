@@ -21,7 +21,7 @@ int main(void)
 	Serial.begin(115200);
 	initGpio();
 	bus.init();
-	delayMs(6000);
+	delayMs(1000);
 
     while(1)
     {
@@ -67,15 +67,25 @@ int main(void)
 				data[1] = BUS_HOST_FORWARD;
 				data[2] = mcu;
 				data[3] = (uint8_t)size;
-				Serial.write(data, 4); //send data
-				Serial.flush();
+				Serial.write(data, 4); //send data*/
 				break;
 			}
 			case BUS_HOST_BROADCAST:
 			{
 				uint16_t lines = *(uint16_t*)&(packet[1]);
-				bus.sendBroadcast(lines, &(packet[3]), packetLength - 3);
+				HostBus::ErrorCode err = bus.sendBroadcast(lines, &(packet[3]), packetLength - 3);
 				uint8_t data[6];
+				if(err != HostBus::ERROR_SUCCESS)
+				{
+					data[0] = 4;
+					data[1] = BUS_HOST_ERROR;
+					data[2] = (uint8_t)err;
+					data[3] = 255;
+					data[4] = (uint8_t)packetLength - 3;
+					Serial.write(data, 5); //send error packet
+					Serial.flush();
+					break;
+				}				
 				data[0] = 5;
 				data[1] = BUS_HOST_BROADCAST;
 				data[2] = packet[3];

@@ -30,6 +30,7 @@ class ClientBus: public Bus
 		{
 			case REQUEST_RECEIVE:
 				{
+					//debug(1);
 					uint8_t data = getData();
 					if(data != 255 && data != id) break;
 				}
@@ -54,26 +55,16 @@ class ClientBus: public Bus
 	void handleDataClockHigh()
 	{
 		//debug(1);
+		bool eot = getEOT();
 		resetACK();
-		if(getEOT())
+		if(eot)
 		{
-			//end of transmission
-			if(state == STATE_RECEIVE)
-			{
-				disableReceive();
-				resetFULL();
-				processReceivedData();
-				resetACK();
-				state = STATE_IDLE;
-			}
-			else if(state == STATE_TRANSMIT)
-			{
-				disableTransmit();
-				resetEOT();
-				resetData();
-				resetACK();
-				state = STATE_IDLE;
-			}
+			disableReceive();
+			resetFULL();
+			resetEOT();
+			resetData();
+			//debug(0);
+			state = STATE_IDLE;
 		}
 	}
 

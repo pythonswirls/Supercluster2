@@ -11,54 +11,6 @@ class HostBus: public Bus
 	{
 	}
 
-	bool waitACK(bool value, uint16_t lines, int timeout)
-	{
-		int wait = timeout / 100; //100us per iteration
-		while(getACK() != value) 
-		{
-			delayUs(100);
-			wait--;
-			if(wait <= 0) 
-			{
-				resetSignals(lines);
-				return false; //timeout
-			}
-		}
-		return true; //ACK received
-	}
-
-	bool waitEOT(bool value, uint16_t lines, int timeout)
-	{
-		int wait = timeout / 100; //100us per iteration
-		while(getEOT() != value) 
-		{
-			delayUs(100);
-			wait--;
-			if(wait <= 0) 
-			{
-				resetSignals(lines);
-				return false; //timeout
-			}
-		}
-		return true; //ACK received
-	}
-
-	bool waitDATA(uint8_t value, uint16_t lines, int timeout)
-	{
-		int wait = timeout / 100; //100us per iteration
-		while(getData() != value) 
-		{
-			delayUs(100);
-			wait--;
-			if(wait <= 0) 
-			{
-				resetSignals(lines);
-				return false; //timeout
-			}
-		}
-		return true; //ACK received
-	}
-
 	enum ErrorCode
 	{
 		ERROR_SUCCESS = 0,
@@ -71,37 +23,60 @@ class HostBus: public Bus
 		ERROR_TIME_OUT_CLK_FULL_NACK = 7,
 		ERROR_TIME_OUT_CLK_FULL = 8,
 		ERROR_TIME_OUT_SET_DATA = 9,
-		ERROR_TIME_OUT_SET_EOT = 10,
+		ERROR_TIME_OUT_RESET_DATA = 10,
+		ERROR_TIME_OUT_SET_EOT = 11,
+		ERROR_TIME_OUT_RESET_EOT = 12,
+		ERROR_TIME_OUT_SET_TYPE = 13,
+		ERROR_TIME_OUT_RESET_TYPE = 14,
+		ERROR_TIME_OUT_SET_CMD = 15,
+		ERROR_TIME_OUT_RESET_CMD = 16,
+		ERROR_TIME_OUT_SET_CLK = 17,
+		ERROR_TIME_OUT_RESET_CLK = 18,
 	};
 
 	ErrorCode sendBroadcast(uint16_t lines, const uint8_t *data, int size, int signalDelayMicros = 1000, int timeout = 100000)
 	{
 		setType(REQUEST_BROADCAST);
 		setData(0xff);
-		if(!waitDATA(0xff, lines, timeout))return ERROR_TIME_OUT_SET_DATA;		
+		if(!waitACK(false, lines, timeout)) return ERROR_TIME_OUT_CLK_NACK;
+		if(!waitCMD(0, timeout)) return ERROR_TIME_OUT_RESET_CMD;
+		//if(!waitTYPE(REQUEST_BROADCAST, lines, timeout)) return ERROR_TIME_OUT_SET_TYPE;
+		if(!waitDATA(0xff, lines, timeout)) return ERROR_TIME_OUT_SET_DATA;		
 		setCLK();
 		setCMD(lines);
+		if(!waitCLK(true, lines, timeout)) return ERROR_TIME_OUT_SET_CLK;
+		if(!waitCMD(lines, timeout)) return ERROR_TIME_OUT_SET_CMD;
+
 		delayUs(signalDelayMicros);
+
 		resetCMD(lines);
-		resetType();
-		delayUs(signalDelayMicros);
 		resetCLK();
+		if(!waitCMD(0, timeout)) return ERROR_TIME_OUT_RESET_CMD;
+		if(!waitCLK(false, lines, timeout)) return ERROR_TIME_OUT_RESET_CLK;
+
+		delayUs(signalDelayMicros);
+
 		for(int i = 0; i < size; i++)
 		{
 			setData(data[i]);
-			if(!waitDATA(data[i], lines, timeout))return ERROR_TIME_OUT_SET_DATA;
 			if(i == size - 1) 
-			{
 				setEOT();
+			if(!waitDATA(data[i], lines, timeout)) return ERROR_TIME_OUT_SET_DATA;
+			if(i == size - 1) 
 				if(!waitEOT(true, lines, timeout)) return ERROR_TIME_OUT_SET_EOT;
-			}
 			setCLK();
+			if(!waitCLK(true, lines, timeout)) return ERROR_TIME_OUT_SET_CLK;
 			delayUs(signalDelayMicros);
 			resetCLK();
+			if(!waitCLK(false, lines, timeout)) return ERROR_TIME_OUT_RESET_CLK;
 			delayUs(signalDelayMicros);
 		}
+		resetType();
 		resetData();
 		resetEOT();
+		//if(!waitTYPE(REQUEST_NONE, lines, timeout)) return ERROR_TIME_OUT_RESET_TYPE;
+		if(!waitDATA(0xff, lines, timeout)) return ERROR_TIME_OUT_RESET_DATA;		
+		if(!waitEOT(false, lines, timeout)) return ERROR_TIME_OUT_RESET_EOT;
 		return ERROR_SUCCESS;
 	}
 
@@ -110,49 +85,79 @@ class HostBus: public Bus
 	{
 		setType(REQUEST_RECEIVE);
 		setData(id);
-		if(!waitDATA(id, lines, timeout))return ERROR_TIME_OUT_SET_DATA;
+		if(!waitACK(false, lines, timeout)) return ERROR_TIME_OUT_CLK_NACK;
+		//if(!waitTYPE(REQUEST_RECEIVE, lines, timeout)) return ERROR_TIME_OUT_SET_TYPE;
+		if(!waitDATA(id, lines, timeout)) return ERROR_TIME_OUT_SET_DATA;
 		setCLK();
+		if(!waitCLK(true, lines, timeout)) return ERROR_TIME_OUT_SET_CLK;
+		
 		setCMD(lines);
-		if(!waitACK(true, lines, timeout))return ERROR_TIME_OUT_CMD_ACK;
+		//if there is ACK response there is no need to check CMD
+		if(!waitCMD(lines, timeout)) return ERROR_TIME_OUT_SET_CMD;	
+		if(!waitACK(true, lines, timeout)) return ERROR_TIME_OUT_CMD_ACK;
+
 		resetCMD(lines);
+		if(!waitCMD(0, timeout)) return ERROR_TIME_OUT_RESET_CMD;
 		resetType();
+		//if(!waitTYPE(REQUEST_NONE, lines, timeout)) return ERROR_TIME_OUT_RESET_TYPE;
 		if(getFULL())	
 		{
 			setEOT(); //set end of transmission
 			resetData();
+			if(!waitEOT(true, lines, timeout)) return ERROR_TIME_OUT_SET_EOT;
+			if(!waitDATA(0xff, lines, timeout)) return ERROR_TIME_OUT_RESET_DATA;	
+
 			resetCLK();
+			if(!waitCLK(false, lines, timeout)) return ERROR_TIME_OUT_RESET_CLK;
 			if(!waitACK(false, lines, timeout)) return ERROR_TIME_OUT_CMD_FULL_NACK;
+
 			resetEOT();
+			if(!waitEOT(false, lines, timeout)) return ERROR_TIME_OUT_RESET_EOT;
 			return ERROR_TIME_OUT_CMD_FULL;
 		}
+
 		resetCLK();
+		//not needed with ACK
+		if(!waitCLK(false, lines, timeout)) return ERROR_TIME_OUT_RESET_CLK;
 		if(!waitACK(false, lines, timeout)) return ERROR_TIME_OUT_CMD_NACK;
+		
 		//state = STATE_TRANSMIT;
 		for(int i = 0; i < size; i++)
 		{
 			setData(data[i]);
+			if(i == size - 1)
+				setEOT();
 			if(!waitDATA(data[i], lines, timeout))return ERROR_TIME_OUT_SET_DATA;
 			if(i == size - 1)
-			{ 
-				setEOT();
 				if(!waitEOT(true, lines, timeout)) return ERROR_TIME_OUT_SET_EOT;
-			}
+			
 			setCLK();
+			if(!waitCLK(true, lines, timeout)) return ERROR_TIME_OUT_SET_CLK;
 			if(!waitACK(true, lines, timeout)) return ERROR_TIME_OUT_CLK_ACK;
-			if(getFULL() && i < size - 1)	
+
+			if(getFULL() && i < size - 1)
 			{
 				setEOT(); //set end of transmission
 				resetData();
+				if(!waitEOT(true, lines, timeout))return ERROR_TIME_OUT_SET_EOT;
+				if(!waitDATA(0xff, lines, timeout)) return ERROR_TIME_OUT_RESET_DATA;	
+	
 				resetCLK();
+				if(!waitCLK(false, lines, timeout)) return ERROR_TIME_OUT_RESET_CLK;
 				if(!waitACK(false, lines, timeout)) return ERROR_TIME_OUT_CLK_FULL_NACK;
+	
 				resetEOT();
-				return ERROR_TIME_OUT_CLK_FULL;
+				if(!waitEOT(false, lines, timeout)) return ERROR_TIME_OUT_RESET_EOT;
+					return ERROR_TIME_OUT_CLK_FULL;
 			}
 			resetCLK();
+			if(!waitCLK(false, lines, timeout)) return ERROR_TIME_OUT_RESET_CLK;			
 			if(!waitACK(false, lines, timeout)) return ERROR_TIME_OUT_CLK_NACK;
 		}
 		resetData();
 		resetEOT();
+		if(!waitDATA(0xff, lines, timeout)) return ERROR_TIME_OUT_RESET_DATA;	
+		if(!waitEOT(false, lines, timeout)) return ERROR_TIME_OUT_RESET_EOT;
 		return ERROR_SUCCESS;
 	}
 
@@ -162,48 +167,77 @@ class HostBus: public Bus
 		sendPacket(lines, id, data, 1);
 	}
 
-	void sendReset(uint16_t lines)
+	ErrorCode sendReset(uint16_t lines, int timeout = 100000)
 	{
-		setType(REQUEST_RESET);
-		setData(id);
+		setType(REQUEST_RESET);		
+		setData(0xff);
+		//if(!waitTYPE(REQUEST_RESET, lines, timeout)) return ERROR_TIME_OUT_SET_TYPE;
 		setCLK();
+		if(!waitCLK(true, lines, timeout)) return ERROR_TIME_OUT_SET_CLK;
 		setCMD(lines);
+		if(!waitCMD(lines, timeout)) return ERROR_TIME_OUT_SET_CMD;		
 		delayMs(1);
-		resetSignals(lines);
-		delayMs(1);
+
+		resetCMD(lines);
+		if(!waitCMD(0, timeout)) return ERROR_TIME_OUT_RESET_CMD;
+		resetCLK();
+		if(!waitCLK(false, lines, timeout)) return ERROR_TIME_OUT_RESET_CLK;
+		resetType();
+		if(!waitDATA(0xff, lines, timeout)) return ERROR_TIME_OUT_RESET_DATA;
+		//if(!waitTYPE(REQUEST_NONE, lines, timeout)) return ERROR_TIME_OUT_RESET_TYPE;
+		return ERROR_SUCCESS;
 	}
 
 	ErrorCode receivePacket(uint16_t lines, uint8_t id, uint8_t *data, int &size, int maxSize, int timeout = 100000)
 	{
+		size = 0;
 		setType(REQUEST_TRANSMIT);
 		setData(id);
+		if(!waitACK(false, lines, timeout)) return ERROR_TIME_OUT_CLK_NACK;		
+		//if(!waitTYPE(REQUEST_TRANSMIT, lines, timeout)) return ERROR_TIME_OUT_SET_TYPE;
 		if(!waitDATA(id, lines, timeout))return ERROR_TIME_OUT_SET_DATA;
 		setCLK();
+		if(!waitCLK(true, lines, timeout)) return ERROR_TIME_OUT_SET_CLK;
+
 		setCMD(lines);
+		if(!waitCMD(lines, timeout)) return ERROR_TIME_OUT_SET_CMD;		
 		if(!waitACK(true, lines, timeout)) return ERROR_TIME_OUT_CMD_ACK;
-		size = 0;
-		if(getEOT())
-		{
-			resetSignals(lines);
-			return ERROR_SUCCESS; //no data to receive
-		}
-		resetType();
+		//client got packet start
 		resetCMD(lines);
-		resetCLK();
+		if(!waitCMD(0, timeout)) return ERROR_TIME_OUT_RESET_CMD;
+		//make sure no one esle is triggered
+		resetType();
 		resetData();
+		//if(!waitTYPE(REQUEST_NONE, lines, timeout)) return ERROR_TIME_OUT_RESET_TYPE;
+		if(!waitDATA(0xff, lines, timeout)) return ERROR_TIME_OUT_RESET_DATA;
+
+		bool eot = getEOT();
+
+		resetCLK();
+		if(!waitCLK(false, lines, timeout)) return ERROR_TIME_OUT_RESET_CLK;
 		if(!waitACK(false, lines, timeout)) return ERROR_TIME_OUT_CMD_NACK;
+
+		if(eot) return ERROR_SUCCESS; //no data to receive
 
 		while(size < maxSize)
 		{
 			setCLK();
+			if(!waitCLK(true, lines, timeout)) return ERROR_TIME_OUT_SET_CLK;
 			if(!waitACK(true, lines, timeout)) return ERROR_TIME_OUT_CLK_ACK; //timeout
 			data[size++] = getData();
-			bool end = getEOT();
+			if(size == maxSize)
+			{
+				setEOT();
+				if(!waitEOT(true, lines, timeout))return ERROR_TIME_OUT_SET_EOT;	
+			}
+			bool eot = getEOT();
 			resetCLK();
+			if(!waitCLK(false, lines, timeout)) return ERROR_TIME_OUT_RESET_CLK;
 			if(!waitACK(false, lines, timeout)) return ERROR_TIME_OUT_CLK_NACK; //timeout
-			if(end) break;
+			if(eot) break;
 		}
-		resetSignals(lines);
+		resetEOT();
+		if(!waitEOT(false, lines, timeout)) return ERROR_TIME_OUT_RESET_EOT;
 		return ERROR_SUCCESS;
 	}
 };
