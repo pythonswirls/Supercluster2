@@ -1,37 +1,88 @@
-constexpr bool BOARD_TYPE_PROGRAMMER = true;
-constexpr bool BOARD_TYPE_BASE = false;
-
-#include "usb/usb_serial.h"
-#include "systemFix.h"
+#include <ch32v20x.h>
+#include <stdint.h>
+//#include "systemFix.h"
 #include "raymarcher/raymarcher.h"
 //#include <debug.h>
 #include "timer.h"
 #include "gpio.h"
-#include "HostBusCH32V208.h"
+
+//#define HOST_PROGRAMMER
+
+#ifdef HOST_PROGRAMMER
+
+#include "usb/usb_serial.h"
 USBSerial Serial;
+#include "HostBusCH32V208.h"
 
-/// old programmer //////////////////////////////////////
+#else 
+#include "UARTSerial.h"
+UARTSerial Serial;
+#include "HostBusCH32V208Cluster.h"
 
+#endif
+
+bool getPacket(uint8_t *packet, uint8_t &packetLength)
+{
+
+//	uint32_t start = getTime();
+	while(!Serial.available());
+/*	{
+		if(getTime() - start > ms2ticks(1000)) //100ms timeout
+		{
+			Serial.write(1); //send error packet
+			Serial.write(BUS_HOST_HEARTBEAT);
+			Serial.flush();
+			return false;
+		}
+	}*/
+	packetLength = Serial.read();
+	if(!packetLength) return false;	//empty packet?
+	for(int i = 0; i < packetLength; i++)
+	{
+		uint32_t start = getTime();
+		while(Serial.available() == 0)
+		{
+			if(getTime() - start > bus.timeoutResponse) //100ms timeout
+			{
+				Serial.write(1); //send error packet
+				Serial.write(BUS_HOST_ERROR);
+				Serial.flush();
+				return false;
+			}
+		}
+		packet[i] = Serial.read(); //read data
+	}
+	return true;
+}
+
+//#include <debug.h>
 int main(void)
 {
-	SetSysClockTo144_HSIfix();
-	SystemCoreClockUpdate();
+	//SetSysClockTo144_HSIfix();
+	//SystemCoreClockUpdate();
+
+
 	initDelayTimer();
-	delayMs(100);
 	Serial.begin(115200);
-	initGpio();
+	#ifdef HOST_PROGRAMMER
+		initGpio();
+	#endif
 	bus.init();
 	delayMs(1000);
-
+	
     while(1)
     {
-		while(Serial.available() < 1);	//(length, [instruction,] [target,] [data..])
+		uint8_t packetLength = 0;
+ 		uint8_t packet[35];
+		while(!getPacket(packet, packetLength));
+		/*while(Serial.available() < 1);	//(length, [instruction,] [target,] [data..])
 		uint8_t packetLength = Serial.read();
 		if(!packetLength) continue;	//empty packet?
 		while(Serial.available() < packetLength); //wait until data is complete
 		uint8_t packet[35];
 		for(int i = 0; i < packetLength; i++)
 			packet[i] = Serial.read(); //read data
+*/
 		uint8_t instruction = packet[0];
 		switch(instruction)	
 		{
@@ -63,7 +114,10 @@ int main(void)
 					Serial.flush();
 					break;
 				}
-				data[0] = 3;
+				//short ack
+				data[0] = 0;
+				Serial.write(data, 1);
+				/*data[0] = 3;
 				data[1] = BUS_HOST_FORWARD;
 				data[2] = mcu;
 				data[3] = (uint8_t)size;
@@ -113,6 +167,14 @@ int main(void)
 					Serial.flush();
 					break;
 				}
+				//short ack if no data
+				if(size == 0)
+				{
+					data[0] = 0;
+					Serial.write(data, 1); //send data
+					Serial.flush();
+					break;
+				}
 				data[0] = (uint8_t)(size + 2);
 				data[1] = BUS_HOST_FETCH;
 				data[2] = mcu;
@@ -120,23 +182,45 @@ int main(void)
 				Serial.flush();
 				break;
 			}
-			case BUS_HOST_LINES_STATE:
+			case BUS_HOST_GET_LINES:
 			{
 				uint16_t lines = bus.getCMD();
-				uint8_t lines2 = (bus.getCLK() ? 0 : 0x01) |
-					(bus.getACK() ? 0 : 0x02) |
-					(bus.getFULL() ? 0: 0x04) |
-					(bus.getEOT() ? 0: 0x08);
+				uint8_t lines2 = (bus.getCLK() ? 0x01 : 0) |
+					(bus.getACK() ? 0x02 : 0) |
+					(bus.getFULL() ? 0x04 : 0) |
+					(bus.getEOT() ? 0x08 : 0) |
+					((uint8_t)bus.getType() << 4); 
 				Serial.write(4);
-				Serial.write(BUS_HOST_LINES_STATE);
+				Serial.write(BUS_HOST_GET_LINES);
 				Serial.write(lines & 0xff);
 				Serial.write((lines >> 8) & 0xff);
 				Serial.write(lines2);
 				Serial.flush();
 				break;
 			}
+			case BUS_HOST_SET_LINES:
+			{
+				bus.setCMD(*(uint16_t*)&(packet[1]));
+				uint8_t signals = packet[3];
+				if(signals & 0x01) bus.setCLK(); else bus.resetCLK();
+				if(signals & 0x02) bus.setACK(); else bus.resetACK();
+				if(signals & 0x04) bus.setFULL(); else bus.resetFULL();
+				if(signals & 0x08) bus.setEOT(); else bus.resetEOT();
+				bus.setType((HostBus::RequestType)((signals >> 4) & 0b11));
+				Serial.write(1);
+				Serial.write(BUS_HOST_SET_LINES);
+				break;
+			}
+			case BUS_HOST_TIMINGS:
+			{
+				bus.timeoutSignalChange = us2ticks(*(uint32_t*)&(packet[1]));
+				bus.timeoutResponse = us2ticks(*(uint32_t*)&(packet[5]));
+				break;
+			}
 			default:
 			{
+				Serial.write(1);
+				Serial.write(BUS_HOST_ERROR);
 				break;
 			}
 		}

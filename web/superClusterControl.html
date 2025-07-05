@@ -91,11 +91,11 @@
 	<label for="idCoord">ID:</label>
 	<input type="number" id="idCoord" value="0" min="0" max="255">
 	<label for="origin">Origin:</label>
-	<span id="origin">
+	<!--span id="origin">
 	<input type="number" id="ox" value="0">
 	<input type="number" id="oy" value="0">
 	<input type="number" id="oz" value="0">
-	</span>
+	</span-->
 	<label for="dir">Direction:</label>
 	<span id="dir">
 		<input type="number" id="vx" value="0">
@@ -114,13 +114,15 @@
 
 <div class="control-row">
 	<button id="resetBtn">Reset</button>
+	<button id="linesBtn">Lines</button>
 	<button id="pingBtn">Ping</button>
+	<button id="waveBtn">Wave</button>
 </div>
 
 <h3>MCU Status</h3>
 <div class="mcu-grid" id="mcuGrid"></div>
 
-<h3>Response Log</h3>
+<h3>Response Log<button onclick="document.querySelector('#log').innerHTML = '';">clear</button><button onclick="logActive = !logActive;">toggle</button></h3>
 <div id="log"></div>
 
 <script>
@@ -149,6 +151,8 @@
 	let writer = null;
 	let readBuffer = [];
 	let writeQueue = [];
+
+	let logActive = true;
 
 	const mcuGrid = document.getElementById("mcuGrid");
 	const mcuBoxes = [];
@@ -209,15 +213,17 @@
 
 	function processBufferedData(callback) 
 	{
-		const length = readBuffer[0];
-		if (readBuffer.length >= length + 1) 
+		let gotResponse = false;
+		while (readBuffer.length)
 		{
+			const length = readBuffer[0];
+			if(readBuffer.length < length + 1) break;
 			const packet = readBuffer.slice(0, length + 1);
 			readBuffer = readBuffer.slice(length + 1);
 			handleHostResponse(new Uint8Array(packet), callback);
-			return true;
+			gotResponse = true;
 		}
-		return false;
+		return gotResponse;
 	}
 
 	function handleHostResponse(packet, callback) 
@@ -232,7 +238,8 @@
 			case BUS_HOST_FETCH:
 			{
 				const mcu = packet[2];
-				handleClientResponse(mcu, packet.slice(3));
+				if(packet.length > 3)
+					handleClientResponse(mcu, packet.slice(3));
 				break;
 			}
 			case BUS_HOST_ERROR:
@@ -264,8 +271,16 @@
 				break;
 		}
 	}
-
-
+/*
+	const BOOTLOADER_IDENTIFY = 0xA1;
+	const BOOTLOADER_RESET = 0xA2;
+	async function sendBootloaderInstruction() 
+	{
+		if (!writer) return;
+		const payload = new Uint8Array([0x57, 0xab, data, checksum]);
+		writeQueue.push({payload: payload, callback: callback});
+	}
+*/
 	async function sendHostInstruction(instruction, data = [], callback = null) 
 	{
 		if (!writer) return;
@@ -289,6 +304,7 @@
 
 	function log(text) 
 	{
+		if(!logActive) return;
 		const logEl = document.getElementById("log");
 		logEl.textContent += text + "\n";
 		logEl.scrollTop = logEl.scrollHeight;
@@ -331,6 +347,11 @@
 		sendHostInstruction(BUS_HOST_RESET);
 	});
 
+	document.getElementById("linesBtn").addEventListener("click", () => 
+	{
+		sendHostInstruction(BUS_HOST_LINES_STATE);
+	});
+
 	document.getElementById("pingBtn").addEventListener("click", () => 
 	{
 		for(let i = 0; i < MAX_MCUS; i++)
@@ -354,6 +375,27 @@
 		}
 	});
 
+	let wavePhase = 0;
+	function sendWave()
+	{
+		for(let x = 0; x < 10; x++)
+			for(let y = 0; y < 4; y++)
+			{
+				let z = Math.round(Math.sin(Math.PI  * 0.1 * wavePhase + x * 0.3 + y * 0.4) * 1.5 + 1.5);
+				let i = x * 16 + y + z * 4;
+				sendClientInstruction(i, BUS_LED, [50]);
+			}
+		wavePhase--;
+		if(wavePhase > 0)
+			setTimeout(sendWave, 30)
+	}
+
+	document.getElementById("waveBtn").addEventListener("click", () => 
+	{
+		wavePhase = 300;
+		sendWave();
+	});
+
 	document.getElementById("renderPixelResultBtn").addEventListener("click", () => 
 	{
 		const id = parseInt(document.getElementById("idCoord").value) || 0;
@@ -369,15 +411,16 @@
 	document.getElementById("renderPixelBtn").addEventListener("click", () => 
 	{
 		const id = parseInt(document.getElementById("idCoord").value) || 0;
-		const ox = parseInt(document.getElementById("ox").value) || 0;
-		const oy = parseInt(document.getElementById("oy").value) || 0;
-		const oz = parseInt(document.getElementById("oz").value) || 0;
+		//const ox = parseInt(document.getElementById("ox").value) || 0;
+		//const oy = parseInt(document.getElementById("oy").value) || 0;
+		//const oz = parseInt(document.getElementById("oz").value) || 0;
 		const vx = parseInt(document.getElementById("vx").value) || 0;
 		const vy = parseInt(document.getElementById("vy").value) || 0;
 		const vz = parseInt(document.getElementById("vz").value) || 0;
 
-		const encode32 = val => [val & 0xFF, (val >> 8) & 0xFF, (val >> 16) & 0xFF, (val >> 24) & 0xFF];
-		const data = [...encode32(ox), ...encode32(oy), ...encode32(oz), ...encode32(vx), ...encode32(vy), ...encode32(vz)];
+		//const encode32 = val => [val & 0xFF, (val >> 8) & 0xFF, (val >> 16) & 0xFF, (val >> 24) & 0xFF];
+		const encode16 = val => [val & 0xFF, (val >> 8) & 0xFF];
+		const data = [/*...encode32(ox), ...encode32(oy), ...encode32(oz),*/ ...encode16(Math.floor(vx * 32768)), ...encode16(Math.floor(vy * 32768)), ...encode16(Math.floor(vz * 32768))];
 
 		sendClientInstruction(id, BUS_RAYMARCHER_RENDER_PIXEL, data);
 	});

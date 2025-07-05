@@ -9,7 +9,7 @@
 	<button id="connect">Connect Serial</button>
 	<button id="reset">Reset</button>
 	<button id="send">Render</button>
-	<canvas id="canvas" width="640" height="360" style="zoom: 2"></canvas>
+	<canvas id="canvas" width="320" height="180" style="zoom: 2"></canvas>
 
 <script>
 
@@ -26,7 +26,7 @@
 	document.getElementById("connect").addEventListener("click", async () => {
 	try {
 		port = await navigator.serial.requestPort({
-		filters: [{ usbVendorId: TARGET_VENDOR_ID, usbProductId:TARGET_PRODUCT_ID }]
+		filters: [/*{ usbVendorId: TARGET_VENDOR_ID, usbProductId:TARGET_PRODUCT_ID }*/]
 		});
 		await connectToPort(port);
 	} catch (err) {
@@ -59,10 +59,11 @@
 		port = serialPort;
 	}
 
-	const MAX_MCUS = 16;
+	const MAX_MCUS = 64;
 	const BUS_RAYMARCHER_INIT = 0x10;
 	const BUS_RAYMARCHER_RENDER_PIXEL = 0x11;
 	const BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x12;
+	const BUS_RAYMARCHER_CAM_POS = 0x13;
 
 	const BUS_LED = 0xd0;
 	const BUS_PING = 0xd1;
@@ -112,6 +113,17 @@
 */
 	async function readLoop() 
 	{
+		let bytesSent = 0;
+		let avgBpsUp = 0;
+		let bytesReceived = 0;
+		let avgBpsDown = 0;
+		setInterval(() => {
+			avgBpsUp = avgBpsUp * 0.5 + (bytesSent * 8) * 0.5;
+			bytesSent = 0;
+			avgBpsDown = avgBpsDown * 0.5 + (bytesReceived * 8) * 0.5;
+			bytesReceived = 0;
+			console.log("bps tx: " + avgBpsUp.toFixed(0) + " rx: " + avgBpsDown.toFixed(0));
+		}, 1000);
 		try 
 		{
 			while (true) 
@@ -126,6 +138,7 @@
 				}
 				const packet = writeQueue.shift();
 				await writer.write(packet.payload);
+				bytesSent += packet.payload.length;
 				log("TX: " + [...packet.payload].map(b => b.toString(16).padStart(2, '0')).join(' '));
 				while(true)
 				{
@@ -133,6 +146,7 @@
 					if (done) break;
 					if (value) 
 					{
+						bytesReceived += value.length;
 						readBuffer.push(...value);
 						if(processBufferedData(packet.callback)) break;
 					}
@@ -146,6 +160,12 @@
 	function processBufferedData(callback) 
 	{
 		const length = readBuffer[0];
+		if(length == 0)
+		{
+			readBuffer.shift();
+			return true;
+		}
+
 		if (readBuffer.length >= length + 1) 
 		{
 			const packet = readBuffer.slice(0, length + 1);
@@ -158,7 +178,7 @@
 
 	function log(bla)
 	{
-		console.log(bla);
+		//console.log(bla);
 	}
 
 	function handleHostResponse(packet, callback) 
@@ -173,7 +193,8 @@
 			case BUS_HOST_FETCH:
 			{
 				const mcu = packet[2];
-				handleClientResponse(mcu, packet.slice(3));
+				if(packet.length > 3)
+					handleClientResponse(mcu, packet.slice(3));
 				break;
 			}
 			case BUS_HOST_ERROR:
@@ -200,12 +221,12 @@
 				break;
 			}
 			case BUS_RAYMARCHER_RENDER_PIXEL_RESULT:
-				if(packet.length < 13) break;
+				if(packet.length < 4) break;
 				receiveData(mcu, packet);
 				break;
 			default:
-				//console.log("Unknown client packet:");
-				//console.log(...packet);
+				console.log("Unknown client packet:");
+				console.log(...packet);
 				break;
 		}
 	}
@@ -239,7 +260,7 @@
 		if(!pixel) 
 			console.log("wrong mcu? " + mcu);
 		else
-			pixel.color = veci(view.getUint32(1, true), view.getUint32(5, true), view.getUint32(9, true));
+			pixel.color = vec(view.getUint8(1), view.getUint8(2), view.getUint8(3));
 		workerDone(pixel);
 	}
 
@@ -248,35 +269,37 @@
 		//12 + 12
 		pixel.time = Date.now();
 		pixel.lastFetch = Date.now();
-		const data = new ArrayBuffer(24);
+		const data = new ArrayBuffer(6);
 		const view = new DataView(data);
+		/*
 		view.setUint32(0, pixel.origin.v[0], true); // little-endian
 		view.setUint32(4, pixel.origin.v[1], true);
-		view.setUint32(8, pixel.origin.v[2], true);
-		view.setUint32(12, pixel.dir.v[0], true);
-		view.setUint32(16, pixel.dir.v[1], true);
-		view.setUint32(20, pixel.dir.v[2], true);
+		view.setUint32(8, pixel.origin.v[2], true);*/
+		view.setUint16(0, (pixel.dir.v[0] >> 1) & 0xffff, true);
+		view.setUint16(2, (pixel.dir.v[1] >> 1) & 0xffff, true);
+		view.setUint16(4, (pixel.dir.v[2] >> 1) & 0xffff, true);
 		sendClientInstruction(pixel.id, BUS_RAYMARCHER_RENDER_PIXEL, new Uint8Array(data));
 	}
 
 async function fetchData()
 {
 	for(let i = 0; i < MAX_MCUS; i++)
-	if(workers[i])
-	{
-		const t = Date.now();
-		if(t - workers[i].time > 2000)
+		if(workers[i] && workers[i].retries < 2)
 		{
-			sendClientInstruction(i, BUS_CLIENT_RESET);
-			sendData(workers[i]);
+			const t = Date.now();
+			if(t - workers[i].time > 2000)
+			{
+				workers[i].retries++;
+				//sendClientInstruction(i, BUS_CLIENT_RESET);
+				sendData(workers[i]);
+			}
+			else
+			if(t - workers[i].lastFetch > 10)
+			{
+				workers[i].lastFetch = t;
+				sendHostInstruction(BUS_HOST_FETCH, [i]);
+			}
 		}
-		else
-		if(t - workers[i].lastFetch > 10)
-		{
-			workers[i].lastFetch = t;
-			sendHostInstruction(BUS_HOST_FETCH, [i]);
-		}
-	}
 }
 
 
@@ -342,20 +365,12 @@ function nextPixel()
 	if(rendery == yres)
 	{
 		ctx.putImageData(imageData, 0, 0);
-		return;
+		return null;
 	}
 	let u = -(renderx - xres / 2) / xres * 1.6 * (xres / yres);
 	let v = -(rendery - yres / 2) / yres * 1.6;
 	let ro = rendererScene.cameraPos;
-	let rd = vec(-u, v, 1).normalize();
-
-	renderx++;
-	if(renderx == xres) 
-	{
-		renderx = 0;
-		rendery++;
-		ctx.putImageData(imageData, 0, 0);
-	}
+	let rd = vec(-u, v, 1).normalize().clamp(-65536, 65535);
 
 	const pixel = {
 		scene: rendererScene,
@@ -363,7 +378,16 @@ function nextPixel()
 		dir: rd,
 		x: renderx,
 		y: rendery,
-		depth: 2
+		depth: 2,
+		retries: 0
+	}
+
+	renderx++;
+	if(renderx == xres) 
+	{
+		renderx = 0;
+		rendery++;
+		ctx.putImageData(imageData, 0, 0);
 	}
 
 	return pixel;
@@ -374,8 +398,8 @@ let workers = [];
 async function workerDone(pixel)
 {
 	let color = pixel.color;
-	color = color.scale(fix(255))
-	color = color.clamp(0, fix(255));
+	//color = color.scale(fix(255))
+	//color = color.clamp(0, fix(255));
 	let i = (pixel.y * xres + pixel.x) * 4;
 	data[i + 0] = color.v[0] >> 16;
 	data[i + 1] = color.v[1] >> 16;
@@ -401,6 +425,16 @@ function render(scene) {
 	renderx = 0;
 	rendery = 0;
 	workers = new Array(MAX_MCUS);
+	/*pos = new Uint8Array(6);
+	pos[0] = scene.cameraPos.v[0] >> 8;
+	pos[1] = scene.cameraPos.v[0] >> 16;
+	pos[2] = scene.cameraPos.v[1] >> 8;
+	pos[3] = scene.cameraPos.v[1] >> 16;
+	pos[4] = scene.cameraPos.v[2] >> 8;
+	pos[5] = scene.cameraPos.v[2] >> 16;
+
+	for(let i = 0; i < MAX_MCUS; i++)
+		sendClientInstruction(i, BUS_RAYMARCHER_CAM_POS, pos);*/
 	for(let i = 0; i < MAX_MCUS; i++)
 	{
 		pixel = nextPixel();

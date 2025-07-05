@@ -1,4 +1,5 @@
 #pragma once
+#include <ch32v20x.h>
 #include <stdint.h>
 
 uint64_t *uid = (uint64_t*)0x1ffff7E8;

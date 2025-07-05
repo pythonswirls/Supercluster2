@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SHA-256 Multi-Core Benchmark</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; margin-top: 50px; }
+    #result { font-size: 1.5em; margin-top: 20px; }
+    button { padding: 10px 20px; font-size: 1em; }
+  </style>
+</head>
+<body>
+  <h1>SHA-256 Multi-Core Hash Rate Benchmark</h1>
+  <button onclick="runBenchmark()">Start Benchmark (10s)</button>
+  <div id="result">Waiting to start...</div>
+
+  <script>
+    function createWorkerURL() {
+      const code = `
+        onmessage = async function(e) {
+          const { duration } = e.data;
+          const data = new Uint8Array(64);
+          crypto.getRandomValues(data);
+
+          let count = 0;
+          const start = performance.now();
+
+          while ((performance.now() - start) / 1000 < duration) {
+            await crypto.subtle.digest("SHA-256", data);
+            count++;
+          }
+
+          postMessage({ hashes: count });
+        };
+      `;
+      const blob = new Blob([code], { type: 'application/javascript' });
+      return URL.createObjectURL(blob);
+    }
+
+    async function runBenchmark() {
+      const resultDiv = document.getElementById("result");
+      const duration = 10;
+      const cores = navigator.hardwareConcurrency || 4;
+
+      resultDiv.textContent = `Running on ${cores} cores for ${duration} seconds...`;
+
+      let completed = 0;
+      let totalHashes = 0;
+      const workerURL = createWorkerURL();
+
+      for (let i = 0; i < cores; i++) {
+        const worker = new Worker(workerURL);
+        worker.postMessage({ duration });
+        worker.onmessage = (e) => {
+          totalHashes += e.data.hashes;
+          completed++;
+          if (completed === cores) {
+            const hashRate = Math.round(totalHashes / duration);
+            resultDiv.textContent = `Total Hash Rate: ${hashRate.toLocaleString()} hashes/sec`;
+            URL.revokeObjectURL(workerURL); // clean up
+          }
+        };
+      }
+    }
+  </script>
+</body>
+</html>

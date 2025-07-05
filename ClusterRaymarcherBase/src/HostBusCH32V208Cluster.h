@@ -3,10 +3,6 @@
 #include <stdint.h>
 #include <ch32v20x.h>
 
-GPIO_TypeDef *mcuBank[] =  {GPIOA, GPIOA, GPIOA, GPIOD, GPIOA, GPIOA, GPIOA, GPIOD,
-	GPIOA, GPIOA, GPIOA, GPIOD, GPIOA, GPIOD, GPIOD, GPIOA,};
-const int mcuPin[] = {8, 4, 0, 3, 1, 5, 9, 4, 2, 6, 10, 5, 3, 6, 2, 7,};
-
 class HostBusCH32V208: public HostBus
 {
 	public:
@@ -20,34 +16,29 @@ class HostBusCH32V208: public HostBus
 		//initialize GPIOs
 		RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
 		RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
-		RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD, ENABLE);
-		resetCMD(0xffff);
-		//16 CMD lines for MCUs
-		for(int i = 0; i < 16; i++)
-		{
-			mcuBank[i]->BSHR = 1 << mcuPin[i]; //set all pins high
-			if(mcuPin[i] < 8)
-				mcuBank[i]->CFGLR = (GPIOA->CFGLR & ~(0b1111 << (mcuPin[i] * 4))) | 
-					((0b0000 /*push pull*/ | 0b11 /*output*/) << (mcuPin[i] * 4));
-			else
-				mcuBank[i]->CFGHR = (GPIOA->CFGLR & ~(0b1111 << ((mcuPin[i] - 8) * 4))) | 
-					((0b0000 /*push pull*/ | 0b11 /*output*/) << ((mcuPin[i] - 8) * 4));
-		}
+		RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);
 	
+		//16 CMD lines for MCUs
+		GPIOC->OUTDR = 0xffff;
+		GPIOC->CFGLR = 0x33333333; //set PC0-PC7 to push pull output, 50MHz
+		GPIOC->CFGHR = 0x44433333; //set PC8-PC15 to push pull output, 50MHz
+		GPIOB->CFGLR = 0x33333333;
+
 		uint32_t cfg = 0;
 		for(int i = 0; i < 8; i++)
 			cfg |= (0b0100 /*open drain*/ | 0b11 /*50MHz output*/) << (4 * i);
-		GPIOB->OUTDR = 0b0111110111111111;    //for open drain need to leave high for others to speak
-		GPIOB->CFGLR = cfg;
+		GPIOA->BSHR = 0xff;    //for open drain need to leave high for others to speak
+		GPIOA->CFGLR = cfg;
+		
 		cfg = 0;
 		for(int i = 0; i < 8; i++)
 			if(i == 1 || i == 7) //avoid D1 and D7 to have swio still active
 				cfg |= (0b0100 /*floating*/ | 0b00 /*input*/) << (4 * i);
 			else
 				cfg |= (0b0100 /*open drain*/ | 0b11 /*30MHz output*/) << (4 * i);
+		GPIOB->BSHR = 0x7d00;
+		GPIOB->BCR  = 0x8200;
 		GPIOB->CFGHR = cfg;
-		//float LED pin on MCUs
-		GPIOC->CFGLR = 0x44444444;
 		return true;
 	}
 
@@ -131,42 +122,35 @@ class HostBusCH32V208: public HostBus
 
 	virtual void setData(uint8_t data)
 	{
-		GPIOB->BCR = 0b0000000011111111; //set PB0-PB7 low, data
-		GPIOB->BSHR = (uint32_t)data; //set PB0-PB7 data
+		GPIOA->BCR = 0b11111111; 
+		GPIOA->BSHR = (uint32_t)data;
 	}
 
 	virtual uint8_t getData()
 	{
-		return (uint8_t)(GPIOB->INDR & 0xff); //get PB0-PB7, data
+		return (uint8_t)(GPIOA->INDR & 0xff);
 	}
 
 	virtual void resetData() 
 	{
-		GPIOB->BSHR = 0b0000000011111111; //set PB0-PB7 high, reset data
+		GPIOA->BSHR = 0b11111111; //set PB0-PB7 high, reset data
 	};
 
 	virtual void setCMD(uint16_t lines)
 	{
-		for(int i = 0; i < 16; i++)
-			if(lines & (1 << i))
-				mcuBank[i]->BCR = 1 << mcuPin[i]; //set pin low
-		//mcuBank[id & 0xf]->BCR = 1 << mcuPin[id & 0xf];
+		GPIOC->BCR = lines;
+		GPIOB->BCR = lines >> 13;
 	}
 
 	virtual void resetCMD(uint16_t lines)
 	{
-		for(int i = 0; i < 16; i++)
-			if(lines & (1 << i))
-				mcuBank[i]->BSHR = 1 << mcuPin[i]; //set pin low
-		//mcuBank[id & 0xf]->BSHR = 1 << mcuPin[id & 0xf];
+		GPIOC->BSHR = lines;
+		GPIOB->BSHR = lines >> 13;
 	}
 
 	virtual uint16_t getCMD()
 	{
-		uint16_t lines = 0;
-		for(int i = 0; i < 16; i++)
-			lines |= (((mcuBank[i]->INDR >> mcuPin[i]) & 1) ^ 1) << i;
-		return lines;
+		return (GPIOC->INDR & 0xffff)^0xffff; 
 	}
 
 	virtual bool getCLK()

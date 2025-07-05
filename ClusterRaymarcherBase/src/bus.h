@@ -4,19 +4,29 @@
 
 enum BusInstruction
 {
+	BUS_RAYMARCHER_INIT = 0x10,
+	BUS_RAYMARCHER_RENDER_PIXEL = 0x11,
+	BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x12,
+
 	BUS_LED = 0xd0,
 	BUS_PING = 0xd1,
 	
 	BUS_CLIENT_RESET = 0xe0,	//reset client
 	BUS_CLIENT_SET_INDEX = 0xe4,
+	BUS_CLIENT_ERROR = 0xe5,	//error in client
+	BUS_CLIENT_TIMINGS = 0xe7,	//set timeout for client
 
 	BUS_HOST_RESET = 0xf0,
 	BUS_HOST_FORWARD = 0xf1,	//forward packet to client
 	BUS_HOST_BROADCAST = 0xf2,	//broadcast packet to flagged clients
 	BUS_HOST_FETCH = 0xf3,	//fetch data from client
-	BUS_HOST_LINES_STATE = 0xf4,
+
 	BUS_HOST_ERROR = 0xf5,
 	BUS_HOST_SUCCESS = 0xf6,
+	BUS_HOST_TIMINGS = 0xf7,	//set timeout for host
+	BUS_HOST_GET_LINES = 0xf8,
+	BUS_HOST_SET_LINES = 0xf9,
+	BUS_HOST_HEARTBEAT = 0xfa,	//heartbeat from host
 };
 
 template<int bufferSize = 32>	//needs to be power of two
@@ -141,6 +151,8 @@ class Bus
 
 	State state;
 	uint8_t id;
+	uint32_t timeoutSignalChange;
+	uint32_t timeoutResponse;
 
 	Bus()
 		:state(STATE_IDLE), id(0)
@@ -151,6 +163,8 @@ class Bus
 
 	bool init()
 	{
+		timeoutSignalChange = us2ticks(1000); //100000us
+		timeoutResponse = us2ticks(1000); //100000us
 		state = STATE_ERROR;
 		if(initIo()) return false;
 		state = STATE_IDLE;
@@ -201,13 +215,12 @@ class Bus
 		resetData();
 	}
 
-	bool waitACK(bool value, uint16_t lines, int timeout)
+	bool waitACK(bool value, uint16_t lines)
 	{
-		uint32_t end = us2ticks(timeout);
 		uint32_t t = getTime();
 		while(getACK() != value) 
 		{
-			if(getTime() - t >= end) 
+			if(getTime() - t >= timeoutResponse) 
 			{
 				resetSignals(lines);
 				return false; //timeout
@@ -216,13 +229,12 @@ class Bus
 		return true; //ACK set
 	}
 
-	bool waitEOT(bool value, uint16_t lines, int timeout)
+	bool waitEOT(bool value, uint16_t lines)
 	{
-		uint32_t end = us2ticks(timeout);
 		uint32_t t = getTime();
 		while(getEOT() != value) 
 		{
-			if(getTime() - t >= end) 
+			if(getTime() - t >= timeoutSignalChange) 
 			{
 				resetSignals(lines);
 				return false; //timeout
@@ -231,13 +243,12 @@ class Bus
 		return true; //EOT set
 	}
 
-	bool waitCLK(bool value, uint16_t lines, int timeout)
+	bool waitCLK(bool value, uint16_t lines)
 	{
-		uint32_t end = us2ticks(timeout);
 		uint32_t t = getTime();
 		while(getCLK() != value) 
 		{
-			if(getTime() - t >= end) 
+			if(getTime() - t >= timeoutSignalChange) 
 			{
 				resetSignals(lines);
 				return false; //timeout
@@ -246,13 +257,12 @@ class Bus
 		return true; //ACK set
 	}
 
-	bool waitDATA(uint8_t value, uint16_t lines, int timeout)
+	bool waitDATA(uint8_t value, uint16_t lines)
 	{
-		uint32_t end = us2ticks(timeout);
 		uint32_t t = getTime();
 		while(getData() != value) 
 		{
-			if(getTime() - t >= end) 
+			if(getTime() - t >= timeoutSignalChange) 
 			{
 				resetSignals(lines);
 				return false; //timeout
@@ -261,13 +271,12 @@ class Bus
 		return true; //data correct
 	}
 
-	bool waitTYPE(Bus::RequestType type, uint16_t lines, int timeout)
+	bool waitTYPE(Bus::RequestType type, uint16_t lines)
 	{
-		uint32_t end = us2ticks(timeout);
 		uint32_t t = getTime();
 		while(getType() != type) 
 		{
-			if(getTime() - t >= end) 
+			if(getTime() - t >= timeoutSignalChange) 
 			{
 				resetSignals(lines);
 				return false; //timeout
@@ -276,13 +285,12 @@ class Bus
 		return true; //data correct
 	}
 
-	bool waitCMD(uint16_t lines, int timeout)
+	bool waitCMD(uint16_t lines)
 	{
-		uint32_t end = us2ticks(timeout);
 		uint32_t t = getTime();
 		while(getCMD() != lines) 
 		{
-			if(getTime() - t >= end) 
+			if(getTime() - t >= timeoutSignalChange) 
 			{
 				resetSignals(lines);
 				return false; //timeout

@@ -22,22 +22,29 @@ class ClientBusCH32V003: public ClientBus
 		RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);
 		RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD, ENABLE);
 	
-		uint32_t cfg = 0;
+		/*uint32_t cfg = 0;
 		for(int i = 0; i < 8; i++)
-			cfg |= (0b0100 /*open drain*/ | 0b11 /*30MHz output*/) << (4 * i);
+			cfg |= (0b0100 | 0b11 ) << (4 * i); // open drain output
 		GPIOC->OUTDR = 0b11111111;    //for open drain need to leave high for others to speak
 		GPIOC->CFGLR = cfg;
 		cfg = 0;
 		for(int i = 0; i < 8; i++)
 			if(i == 1 || i == 7) //avoid D1 and D7 to have swio still active
-				cfg |= (0b0100 /*floating*/ | 0b00 /*input*/) << (4 * i);
+				cfg |= (0b0100 | 0b00 ) << (4 * i); //floating input
 			else
-				cfg |= (0b0100 /*open drain*/ | 0b11 /*30MHz output*/) << (4 * i);
+				cfg |= (0b0100| 0b11 ) << (4 * i); //open drain output
+		*/
+		GPIOC->OUTDR = 0b11111111;
+		GPIOC->CFGLR = 0x77777777; //open drain (except d1 and d7		
+		//GPIOC->CFGLR = 0x44444444; //floating
 
 		GPIOD->OUTDR = 0b01111101;
-		GPIOD->CFGLR = cfg;
+		//GPIOD->CFGLR = cfg;
+		//GPIOD->CFGLR = 0x44444444; //floating
+		GPIOD->CFGLR = 0x47777747; //open drain (except d1 and d7
 
-		GPIOA->CFGLR = (GPIOA->CFGLR & 0b000011110000) |  ((0b0100 /*floating*/ | 0b00 /*input*/) << (4 * 2));
+		//GPIOA->CFGLR = (GPIOA->CFGLR & 0b000011110000) |  ((0b0100 /*floating*/ | 0b00 /*input*/) << (4 * 2));
+		GPIOA->CFGLR = (GPIOA->CFGLR & 0x0f0) | 0x400;
 	
 		//initialize interrupts
 		RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);
@@ -67,6 +74,8 @@ class ClientBusCH32V003: public ClientBus
 
 	virtual void enableTransmit()
 	{
+		//GPIOC->OUTDR = 0b11111111;
+		//GPIOC->CFGLR = 0x77777777; //open drain (except d1 and d7)
 		EXTI->INTENR |= EXTI_INTENR_MR0; // Enable EXT7 on line 0
 	}
 
@@ -80,6 +89,7 @@ class ClientBusCH32V003: public ClientBus
 	{
 		EXTI->INTENR &= ~EXTI_INTENR_MR0; 	// Disable EXT7 on line 0
 		GPIOC->BSHR = 0b11111111; 			//release open drain lines
+		//GPIOC->CFGLR = 0x44444444; 			//floating
 		GPIOD->BSHR = 0b01111101;			//release open drain lines, avoid D1 and D7 here to have swio still active
 	}
 

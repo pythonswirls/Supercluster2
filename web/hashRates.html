@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>SHA256 accelerator</title>
+  <style>
+		body {
+			background-color: #1d1d1d;
+			color: #ffffff;
+			font-family: Segoe UI, sans-serif;
+			margin: 0;
+			padding: 10px;
+		}
+	
+		h1 {
+			text-align: center;
+			margin-bottom: 10px;
+			font-weight: normal;
+			font-size: 20px;
+			color: #c7c7c7;
+			display: inline-block;
+			padding-right: 50px;
+		}
+	
+		.grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+			gap: 2px;
+		}
+	
+		.core {
+			background-color: #2d2d2d;
+			border: 1px solid #444;
+			border-radius: 3px;
+			padding: 2px;
+			display: flex;
+			flex-direction: column;
+		}
+	
+		.core-label {
+			font-size: 10px;
+			color: #a0a0a0;
+			margin-bottom: 2px;
+		}
+	
+		.graph {
+			height: 30px;
+			background-color: #1a1a1a;
+			border: 1px solid #3a3a3a;
+			position: relative;
+			overflow: hidden;
+		}
+	
+		canvas {
+			width: 100%;
+			height: 100%;
+			display: block;
+		}  
+  </style>
+</head>
+<body>
+	<h1>SHA256 accelerator</h1>	
+	<button id="connect">Connect Serial</button>
+	<button id="reset">Reset</button>
+	<button id="start">Start</button>
+	<br>
+	<h1 id="total">Total: 0 H/s</h1>	
+	<div class="grid" id="cpuGrid"></div>
+<script>
+
+///////////////////////////// WebSerial //////////////////////////////
+
+	let port = null;
+	let reader = null;
+	let writer = null;
+	let readBuffer = [];
+	let writeQueue = [];
+
+	document.getElementById("connect").addEventListener("click", async () => {
+	try {
+		port = await navigator.serial.requestPort({
+		filters: [/*{ usbVendorId: TARGET_VENDOR_ID, usbProductId:TARGET_PRODUCT_ID }*/]
+		});
+		await connectToPort(port);
+	} catch (err) {
+		console.error("Manual connection failed:", err);
+	}
+	});
+
+	document.getElementById("start").addEventListener("click", async () => {
+		if (!port || !port.writable) {
+			console.warn("Serial port not connected.");
+			return;
+		}
+		shaActive = true;
+		for(let i = 0; i < MAX_MCUS; i++)
+			sendClientInstruction(i, BUS_SHA256_START, []);
+		//sendBroadcastInstruction(0xffff, BUS_SHA256_START, []);
+	});
+
+	document.getElementById("reset").addEventListener("click", async () => {
+		sendHostInstruction(BUS_HOST_RESET);
+	});
+
+	async function connectToPort(serialPort) 
+	{
+		await serialPort.open({ baudRate: 115200 });
+		console.log("Serial port opened.");
+
+		// Setup reader
+		reader = serialPort.readable.getReader();
+		writer = serialPort.writable.getWriter();
+		readLoop();
+
+		port = serialPort;
+	}
+
+	const MAX_MCUS = 160;
+	const BUS_RAYMARCHER_INIT = 0x10;
+	const BUS_RAYMARCHER_RENDER_PIXEL = 0x11;
+	const BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x12;
+	const BUS_RAYMARCHER_CAM_POS = 0x13;
+
+	const BUS_SHA256_START = 0x20;
+	const BUS_SHA256_END = 0x21;
+	const BUS_SHA256_COUNT = 0x22;
+
+	const BUS_LED = 0xd0;
+	const BUS_PING = 0xd1;
+	
+	const BUS_CLIENT_RESET = 0xe0;	//reset client
+	const BUS_CLIENT_SET_INDEX = 0xe4;
+	const BUS_CLIENT_ERROR = 0xe5;	//error in client
+
+	const BUS_HOST_RESET = 0xf0;
+	const BUS_HOST_FORWARD = 0xf1;	//forward packet to client
+	const BUS_HOST_BROADCAST = 0xf2;	//broadcast packet to flagged clients
+	const BUS_HOST_FETCH = 0xf3;	//fetch data from client
+	const BUS_HOST_LINES_STATE = 0xf4;
+	const BUS_HOST_ERROR = 0xf5;
+	const BUS_HOST_SUCCESS = 0xf6;
+	
+	let shaActive = false;
+
+	async function readLoop() 
+	{
+		let bytesSent = 0;
+		let avgBpsUp = 0;
+		let bytesReceived = 0;
+		let avgBpsDown = 0;
+		setInterval(() => {
+			avgBpsUp = avgBpsUp * 0.5 + (bytesSent * 8) * 0.5;
+			bytesSent = 0;
+			avgBpsDown = avgBpsDown * 0.5 + (bytesReceived * 8) * 0.5;
+			bytesReceived = 0;
+			console.log("bps tx: " + avgBpsUp.toFixed(0) + " rx: " + avgBpsDown.toFixed(0));
+		}, 1000);
+		try 
+		{
+			while (true) 
+			{
+				if(writeQueue.length == 0)
+				{
+					while(writeQueue.length == 0)
+					{
+						await new Promise(r => setTimeout(r, 1));
+						fetchData();
+					}
+				}
+				const packet = writeQueue.shift();
+				await writer.write(packet.payload);
+				bytesSent += packet.payload.length;
+				log("TX: " + [...packet.payload].map(b => b.toString(16).padStart(2, '0')).join(' '));
+				while(true)
+				{
+					const {value, done} = await reader.read();
+					if (done) break;
+					if (value) 
+					{
+						bytesReceived += value.length;
+						readBuffer.push(...value);
+						if(processBufferedData(packet.callback)) break;
+					}
+				}
+			}
+		} catch (err) {
+			console.error('Read error:', err);
+		}
+	}
+
+	function processBufferedData(callback) 
+	{
+		const length = readBuffer[0];
+		if(length == 0)
+		{
+			readBuffer.shift();
+			return true;
+		}
+
+		if (readBuffer.length >= length + 1) 
+		{
+			const packet = readBuffer.slice(0, length + 1);
+			readBuffer = readBuffer.slice(length + 1);
+			handleHostResponse(new Uint8Array(packet), callback);
+			return true;
+		}
+		return false;
+	}
+
+	function log(bla)
+	{
+		//console.log(bla);
+	}
+
+	function handleHostResponse(packet, callback) 
+	{
+		const hex = [...packet].map(b => b.toString(16).padStart(2, '0')).join(' ');
+		log("RX: " + hex);
+
+		const instruction = packet[1];
+		let error = false;
+		switch (instruction) 
+		{
+			case BUS_HOST_FETCH:
+			{
+				const mcu = packet[2];
+				if(packet.length > 3)
+					handleClientResponse(mcu, packet.slice(3));
+				break;
+			}
+			case BUS_HOST_ERROR:
+				if(callback)
+					callback(false, packet);
+				return;
+			default:
+				/*console.log("Unknown host packet:");
+				console.log(...packet);*/
+				break;
+		}
+		if(callback) callback(true, packet);
+	}
+
+	function handleClientResponse(mcu, packet)
+	{
+		const instruction = packet[0];
+		switch (instruction) 
+		{
+			case BUS_SHA256_COUNT:
+				if(packet.length < 2) break;
+				receiveData(mcu, packet);
+				break;
+			default:
+				console.log("Unknown client packet:");
+				console.log(...packet);
+				break;
+		}
+	}
+
+
+	async function sendHostInstruction(instruction, data = [], callback = null) 
+	{
+		if (!writer) return;
+		const length = 1 + data.length;
+		const payload = new Uint8Array([length, instruction, ...data]);
+		//await writer.write(payload);
+		writeQueue.push({payload: payload, callback: callback});
+	}
+
+	async function sendBroadcastInstruction(lines, instruction, data = [], callback = null) 
+	{
+		const payload = new Uint8Array([lines & 0xff, (lines >> 8) & 0xff, instruction, ...data]);
+		sendHostInstruction(BUS_HOST_BROADCAST, payload, callback);
+	}
+
+	async function sendClientInstruction(mcu, instruction, data = [], callback = null) 
+	{
+		const payload = new Uint8Array([mcu, instruction, ...data]);
+		sendHostInstruction(BUS_HOST_FORWARD, payload, callback);
+	}
+
+	function receiveData(mcu, data) 
+	{
+		//console.log(data[1]);
+		graphs[mcu].count += data[1] + data[2] * 256;
+	}
+
+	async function fetchData()
+	{
+		if(!shaActive) return;
+		for(let i = 0; i < MAX_MCUS; i++)
+		{
+			sendHostInstruction(BUS_HOST_FETCH, [i]);
+		}
+	}
+
+	window.addEventListener("DOMContentLoaded", async () => {
+		const ports = await navigator.serial.getPorts();
+		if (ports.length >= 1) {
+			console.log("Auto-connecting to authorized device...");
+			await connectToPort(ports[0]);
+		} else {
+			console.log("Manual connection required.");
+		}
+	});
+
+//////////////////////////////////////////////////////////////////////
+    const grid = document.getElementById('cpuGrid');
+    const graphs = [];
+
+    for (let i = 0; i < MAX_MCUS; i++) 
+	{
+		const core = document.createElement('div');
+		core.className = 'core';
+
+		const label = document.createElement('div');
+		label.className = 'core-label';
+		label.textContent = `#${i}`;
+
+		const graphContainer = document.createElement('div');
+		graphContainer.className = 'graph';
+
+		const canvas = document.createElement('canvas');
+		canvas.width = 100;
+		canvas.height = 30;
+		graphContainer.appendChild(canvas);
+
+		core.appendChild(label);
+		core.appendChild(graphContainer);
+		grid.appendChild(core);
+
+		graphs.push({
+			index: i,
+			label: label,
+			canvas: canvas,
+			avg: Array(10).fill(0),
+			ctx: canvas.getContext('2d'),
+			data: Array(100).fill(0),
+			hs: 0,
+			count: 0
+		});
+    }
+
+    function drawGraph(graph, newVal) 
+	{
+		const { ctx, canvas, data } = graph;
+		data.push(newVal);
+		if(data.length > 100)
+			data.shift();
+		const min = 0;//Math.min(...data);
+		const max = Math.max(...data) * 1.25;
+		const spread = (max - min) + 1;
+		
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		ctx.beginPath();
+		ctx.moveTo(0, canvas.height - ((data[0] - min) / spread * canvas.height));
+		for (let x = 1; x < data.length; x++) 
+		{
+			const y = canvas.height - ((data[x] - min) / spread * canvas.height);
+			ctx.lineTo(x, y);
+		}
+		ctx.strokeStyle = '#00ff00';
+		ctx.lineWidth = 1;
+		ctx.stroke();
+    }
+
+	let avgTotal = 0;
+    function updateAllGraphs() 
+	{
+		let total = 0;
+		for (const graph of graphs) {
+			// Smooth usage with exponential moving average
+			graph.avg.push(graph.count);
+			graph.avg.shift();
+			let avg = 0;
+			for(let i = 0; i < graph.avg.length; i++)
+				avg += graph.avg[i];
+			total += avg;
+			graph.hs = avg;
+			graph.label.textContent = `#${graph.index} - ${avg}H/s`;
+			graph.count = 0;
+			drawGraph(graph, graph.hs);
+		}		
+		avgTotal = avgTotal * 0.9 + total * 0.0001;
+		document.getElementById("total").innerText = `Total: ${avgTotal.toFixed(1)} kH/s`;
+    }
+
+    setInterval(updateAllGraphs, 100);
+
+</script>
+</body>
+</html>

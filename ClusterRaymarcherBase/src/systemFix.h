@@ -1,3 +1,5 @@
+#pragma once
+#include <ch32v20x.h>
 static void SetSysClockTo144_HSIfix(void)
 {
     EXTEN->EXTEN_CTR |= EXTEN_PLL_HSI_PRE;

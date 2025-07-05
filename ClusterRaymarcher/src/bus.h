@@ -7,24 +7,34 @@ enum BusInstruction
 	BUS_RAYMARCHER_INIT = 0x10,
 	BUS_RAYMARCHER_RENDER_PIXEL = 0x11,
 	BUS_RAYMARCHER_RENDER_PIXEL_RESULT = 0x12,
+	BUS_RAYMARCHER_CAM_POS = 0x13,
+
+	BUS_SHA256_START = 0x20,
+	BUS_SHA256_END = 0x21,
+	BUS_SHA256_COUNT = 0x22,
 
 	BUS_LED = 0xd0,
 	BUS_PING = 0xd1,
 	
-	BUS_CLIENT_RESET = 0xe0,	//reset client
+	BUS_CLIENT_RESET = 0xe0,		//reset client
 	BUS_CLIENT_SET_INDEX = 0xe4,
-	BUS_CLIENT_ERROR = 0xe5,	//error in client
+	BUS_CLIENT_ERROR = 0xe5,		//error in client
+	BUS_CLIENT_TIMINGS = 0xe7,	//set timeout for client
 
 	BUS_HOST_RESET = 0xf0,
-	BUS_HOST_FORWARD = 0xf1,	//forward packet to client
-	BUS_HOST_BROADCAST = 0xf2,	//broadcast packet to flagged clients
-	BUS_HOST_FETCH = 0xf3,	//fetch data from client
-	BUS_HOST_LINES_STATE = 0xf4,
+	BUS_HOST_FORWARD = 0xf1,		//forward packet to client
+	BUS_HOST_BROADCAST = 0xf2,		//broadcast packet to flagged clients
+	BUS_HOST_FETCH = 0xf3,			//fetch data from client
+
 	BUS_HOST_ERROR = 0xf5,
 	BUS_HOST_SUCCESS = 0xf6,
+	BUS_HOST_TIMINGS = 0xf7,	//set timeout for host
+	BUS_HOST_GET_LINES = 0xf8,
+	BUS_HOST_SET_LINES = 0xf9,
+
 };
 
-template<int bufferSize = 32>	//needs to be power of two
+template<int bufferSize = 32>		//needs to be power of two
 class RingBuffer
 {
 	public:
@@ -84,6 +94,15 @@ class RingBuffer
 		return true;
 	}
 
+	bool read(int16_t &data)
+	{
+		uint8_t *d = (uint8_t*)(&data);
+		if(size < 2) return false;
+		read(d[0]);
+		read(d[1]);
+		return true;
+	}
+
 	bool read(uint32_t &data)
 	{
 		if(size < 4) return false;
@@ -126,6 +145,7 @@ class Bus
 		STATE_IDLE = 0x00,
 		STATE_RECEIVE = 0x01,
 		STATE_TRANSMIT = 0x02,
+		STATE_RECEIVE_BROADCAST = 0x03,
 		STATE_ERROR = 0xff
 	};
 
@@ -146,6 +166,8 @@ class Bus
 
 	State state;
 	uint8_t id;
+	uint32_t timeoutSignalChange;
+	uint32_t timeoutResponse;
 
 	Bus()
 		:state(STATE_IDLE), id(0)
@@ -156,6 +178,8 @@ class Bus
 
 	bool init()
 	{
+		timeoutSignalChange = 100000; //100000us
+		timeoutResponse = 100000; //100000us
 		state = STATE_ERROR;
 		if(initIo()) return false;
 		state = STATE_IDLE;

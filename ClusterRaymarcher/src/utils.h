@@ -24,16 +24,17 @@ void led(int on = -1)
 		GPIOA->CFGLR = (GPIOA->CFGLR & 0xf00) | 0x40;
 }
 
-void blink(int ms = 100)
+volatile uint32_t ledPower = 1;
+volatile uint32_t ledTimeoutTicks = 0;
+
+void blink(int ms = 100, int power = -1)
 {
-    led(255);
+    led(power < 0 ? ledPower : power);
     delayMs(ms >> 1);
     led(0);
     delayMs(ms >> 1);
 }
 
-volatile uint32_t ledPower = 1;
-volatile uint32_t ledTimeoutTicks = 0;
 void ledTimeout(uint32_t time = 100)
 {
 	resetTimer();
